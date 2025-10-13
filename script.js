@@ -62,7 +62,18 @@ function handleFileSelect(event) {
 
             filesProcessed++;
             if (filesProcessed === totalFiles) {
-                // All files processed, now generate images
+                // All files processed, now optionally validate that all files model the same park
+                const checkSameParkEl = document.getElementById('check-same-park');
+                const shouldCheckSamePark = checkSameParkEl ? checkSameParkEl.checked : true;
+
+                if (shouldCheckSamePark) {
+                    if (!validateSamePark(fileResults, gallery)) {
+                        // Validation failed — do not proceed to generate images
+                        return;
+                    }
+                }
+
+                // Proceed to generate images
                 processFileResults(fileResults, processedIdentifiedTrees, gallery);
             }
         };
@@ -101,6 +112,76 @@ function normalizeIdentifiedTrees(identifiedTrees) {
         .sort((a, b) => a - b);
     
     return JSON.stringify(treeIds);
+}
+
+// Validate that all uploaded files model the same park layout.
+// Returns true if all files match; otherwise appends an error notice to the gallery and returns false.
+function validateSamePark(fileResults, gallery) {
+    if (!fileResults || fileResults.length === 0) return true;
+
+    // Create a canonical signature for a park: width, height, treeRadius, and sorted tree coordinate list
+    function parkSignature(treeInfo) {
+        const w = treeInfo.width || treeInfo.parkWidth || 30;
+        const h = treeInfo.height || treeInfo.parkHeight || 30;
+        const r = treeInfo.treeRadius || 0;
+
+        const coords = (treeInfo.trees || []).map(t => `${t.treeId}:${Number(t.x).toFixed(6)},${Number(t.y).toFixed(6)}`);
+        coords.sort();
+
+        return `${w}x${h}|r=${r}|${coords.join('|')}`;
+    }
+
+    const signatures = fileResults.map(fr => {
+        try {
+            return parkSignature(fr.treeInfo);
+        } catch (e) {
+            return null;
+        }
+    });
+
+    const unique = Array.from(new Set(signatures.filter(s => s !== null)));
+
+    if (unique.length <= 1) return true;
+
+    // Mismatch detected — show a single clear failure notice in the gallery
+    const galleryItem = document.createElement('div');
+    galleryItem.className = 'gallery-item';
+    galleryItem.style.backgroundColor = '#fff3f3';
+    galleryItem.style.border = '2px solid #dc3545';
+
+    const notice = document.createElement('div');
+    notice.style.padding = '1.5rem';
+    notice.style.textAlign = 'left';
+
+    const title = document.createElement('h3');
+    title.textContent = `Park model mismatch — processing aborted`;
+    title.style.margin = '0 0 0.5rem 0';
+    title.style.color = '#a71d2a';
+
+    const msg = document.createElement('p');
+    msg.textContent = 'The selected files do not all model the same park (dimensions or tree layout differ). Please select files representing the same park.';
+    msg.style.margin = '0 0 0.75rem 0';
+
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'View detected park signatures';
+    details.appendChild(summary);
+
+    const list = document.createElement('ul');
+    for (let i = 0; i < fileResults.length; i++) {
+        const li = document.createElement('li');
+        li.textContent = `${fileResults[i].originalFile}: ${signatures[i] || 'invalid'} `;
+        list.appendChild(li);
+    }
+    details.appendChild(list);
+
+    notice.appendChild(title);
+    notice.appendChild(msg);
+    notice.appendChild(details);
+    galleryItem.appendChild(notice);
+    gallery.appendChild(galleryItem);
+
+    return false;
 }
 
 function addSkippedFileNotice(gallery, fileNameStem, identifiedTrees) {

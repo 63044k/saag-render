@@ -52,7 +52,8 @@ function handleFileSelect(event) {
                     treeInfo,
                     fileNameStem,
                     identifiedTrees,
-                    originalFile: file.name
+                    originalFile: file.name,
+                    rawData: data
                 });
 
             } catch (error) {
@@ -65,9 +66,18 @@ function handleFileSelect(event) {
                 // All files processed, now optionally validate that all files model the same park
                 const checkSameParkEl = document.getElementById('check-same-park');
                 const shouldCheckSamePark = checkSameParkEl ? checkSameParkEl.checked : true;
+                const checkSameMetaEl = document.getElementById('check-same-meta');
+                const shouldCheckSameMeta = checkSameMetaEl ? checkSameMetaEl.checked : true;
 
                 if (shouldCheckSamePark) {
                     if (!validateSamePark(fileResults, gallery)) {
+                        // Validation failed — do not proceed to generate images
+                        return;
+                    }
+                }
+
+                if (shouldCheckSameMeta) {
+                    if (!validateSameMeta(fileResults, gallery)) {
                         // Validation failed — do not proceed to generate images
                         return;
                     }
@@ -171,6 +181,78 @@ function validateSamePark(fileResults, gallery) {
     for (let i = 0; i < fileResults.length; i++) {
         const li = document.createElement('li');
         li.textContent = `${fileResults[i].originalFile}: ${signatures[i] || 'invalid'} `;
+        list.appendChild(li);
+    }
+    details.appendChild(list);
+
+    notice.appendChild(title);
+    notice.appendChild(msg);
+    notice.appendChild(details);
+    galleryItem.appendChild(notice);
+    gallery.appendChild(galleryItem);
+
+    return false;
+}
+
+// Validate that all uploaded files share the same meta tag value.
+// Returns true if all files match; otherwise appends an error notice to the gallery and returns false.
+function validateSameMeta(fileResults, gallery) {
+    if (!fileResults || fileResults.length === 0) return true;
+
+    // Extract meta tag value from parsed rawData
+    function metaValue(rawData) {
+        if (!rawData) return null;
+        // Use explicit meta.tag as per provided sample JSON
+        if (rawData.meta && typeof rawData.meta.tag !== 'undefined' && rawData.meta.tag !== null) {
+            return String(rawData.meta.tag).trim();
+        }
+        return null;
+    }
+
+    const metas = fileResults.map(fr => {
+        try {
+            const v = metaValue(fr.rawData);
+            return v === null ? null : v; // case-sensitive comparison
+        } catch (e) {
+            return null;
+        }
+    });
+
+    const unique = Array.from(new Set(metas.filter(m => m !== null)));
+
+    // If no meta present across files, consider them matching (nothing to compare)
+    if (unique.length <= 1) return true;
+
+    // Mismatch detected — show a clear failure notice in the gallery
+    const galleryItem = document.createElement('div');
+    galleryItem.className = 'gallery-item';
+    galleryItem.style.backgroundColor = '#fff3f3';
+    galleryItem.style.border = '2px solid #dc3545';
+
+    const notice = document.createElement('div');
+    notice.style.padding = '1.5rem';
+    notice.style.textAlign = 'left';
+
+    const title = document.createElement('h3');
+    title.textContent = `Meta tag mismatch — processing aborted`;
+    title.style.margin = '0 0 0.5rem 0';
+    title.style.color = '#a71d2a';
+
+    const msg = document.createElement('p');
+    msg.textContent = 'The selected files do not all contain the same meta tag. Please select files with the same meta value.';
+    msg.style.margin = '0 0 0.75rem 0';
+
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'View detected meta values';
+    details.appendChild(summary);
+
+    const list = document.createElement('ul');
+    for (let i = 0; i < fileResults.length; i++) {
+        const li = document.createElement('li');
+        // show original meta value (not lowercased) if present
+        const raw = (fileResults[i].rawData && fileResults[i].rawData.meta && fileResults[i].rawData.meta.tag) ? String(fileResults[i].rawData.meta.tag) : 'none';
+        li.textContent = `${fileResults[i].originalFile}: ${raw}`;
         list.appendChild(li);
     }
     details.appendChild(list);

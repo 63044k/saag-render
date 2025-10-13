@@ -81,10 +81,14 @@
             <p style="font-size: 0.9rem; color: #666;">Files with duplicate identified trees will be skipped to avoid redundant plans.</p>
             <label for="file-input" id="file-input-label">Select Files</label>
             <input type="file" id="file-input" accept=".json" multiple>
-            <div style="margin-top: 1rem; font-size: 0.95rem; color: #444;">
+            <div style="margin-top: 1rem; font-size: 0.95rem; color: #444; display:flex; gap:1rem; flex-direction:column;">
                 <label style="display:inline-flex; align-items:center; gap:0.5rem;">
                     <input type="checkbox" id="check-same-park" checked>
                     <span>Require all selected files to model the same park (recommended)</span>
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:0.5rem;">
+                    <input type="checkbox" id="check-same-meta" checked>
+                    <span>Require all selected files to have the same meta tag (recommended)</span>
                 </label>
             </div>
         </header>

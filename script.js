@@ -253,13 +253,16 @@ function processFileResults(fileResults, gallery) {
         // Display order: timestamp first, csvHash second (named "park layout"), tag last (named "run tag")
         header.textContent = `Group ${gi + 1}: timestamp="${group.ts}" park layout="${group.csvHash}" run tag="${group.tag}" members=${group.members.length}`;
         section.appendChild(header);
-        // create an original box (single row) and a grid for solution images
-        const originalBox = document.createElement('div');
-        originalBox.className = 'original-box';
-        const solutionsGrid = document.createElement('div');
-        solutionsGrid.className = 'group-grid';
-        section.appendChild(originalBox);
-        section.appendChild(solutionsGrid);
+    // create an original box (single row) and a container that will hold per-model sections
+    const originalBox = document.createElement('div');
+    originalBox.className = 'original-box';
+
+    // modelRow will contain one model-section per llm.model in this group
+    const modelRow = document.createElement('div');
+    modelRow.className = 'model-row';
+
+    section.appendChild(originalBox);
+    section.appendChild(modelRow);
         gallery.appendChild(section);
 
         // build duplicate maps local to group
@@ -314,25 +317,48 @@ function processFileResults(fileResults, gallery) {
             }
         }
 
-        // create ORIGINAL from first member (displayed full-width in originalBox)
+        // create ORIGINAL from first member (displayed in originalBox)
         const first = group.members[0];
         const originalStem = deriveOriginalStem(first.fileNameStem) || first.fileNameStem;
         createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash }, originalBox);
 
-        // render member solution images in the solutionsGrid (include the first so ORIGINAL and solution both show)
-        group.members.forEach((fr, idx) => {
-            const stem = fr.fileNameStem;
-            createImageFromData(fr.treeInfo, stem, fr.identifiedTrees, {
-                modelTag: fr.modelTag,
-                modelHintTag: fr.modelHintTag,
-                sourceOriginal: fr.originalFile,
-                model: fr._model,
-                hintMode: fr._hintMode,
-                normalizedKey: fr._normalizedKey,
-                timestamp: fr._timestamp,
-                csvHash: group.csvHash
-            }, solutionsGrid);
-        });
+        // For each model in this group, create a model-section container (row layout) and render that model's images inside a grid
+        for (const [model, mm] of modelMap.entries()) {
+            const modelSection = document.createElement('div');
+            modelSection.className = 'model-section';
+
+            // optional header for the model
+            const modelHeader = document.createElement('h4');
+            modelHeader.textContent = model;
+            modelHeader.style.margin = '0 0 0.5rem 0';
+            modelHeader.style.fontSize = '0.95rem';
+            modelHeader.style.color = '#333';
+            modelSection.appendChild(modelHeader);
+
+            // each model uses the same grid scheme for its images
+            const modelGrid = document.createElement('div');
+            modelGrid.className = 'group-grid';
+            modelSection.appendChild(modelGrid);
+
+            // flatten the per-key arrays and render each member into this model's grid
+            for (const arr of mm.values()) {
+                arr.forEach(fr => {
+                    const stem = fr.fileNameStem;
+                    createImageFromData(fr.treeInfo, stem, fr.identifiedTrees, {
+                        modelTag: fr.modelTag,
+                        modelHintTag: fr.modelHintTag,
+                        sourceOriginal: fr.originalFile,
+                        model: fr._model,
+                        hintMode: fr._hintMode,
+                        normalizedKey: fr._normalizedKey,
+                        timestamp: fr._timestamp,
+                        csvHash: group.csvHash
+                    }, modelGrid);
+                });
+            }
+
+            modelRow.appendChild(modelSection);
+        }
 
         // record for manifest
         lastGroups.push({

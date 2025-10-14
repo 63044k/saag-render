@@ -732,8 +732,8 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     }
     
     const info = document.createElement('p');
-    info.style.margin = '0 0 1rem 0';
-    info.style.fontSize = '0.9rem';
+    info.style.margin = '0 0 0rem 0';
+    info.style.fontSize = '0.8rem';
     info.style.color = '#666';
     
     const totalTrees = treeData.trees.length;

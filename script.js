@@ -335,16 +335,50 @@ function processFileResults(fileResults, gallery) {
             modelHeader.style.color = '#333';
             modelSection.appendChild(modelHeader);
 
-            // each model uses the same grid scheme for its images
-            const modelGrid = document.createElement('div');
-            modelGrid.className = 'group-grid';
-            modelSection.appendChild(modelGrid);
+            // Partition this model's members by hintMode and render a hint-section per hintMode
+            const hintRow = document.createElement('div');
+            hintRow.className = 'hint-row';
 
-            // flatten the per-key arrays and render each member into this model's grid
+            // Build a map hintMode => array of fileResults for this model
+            const hintMap = new Map();
             for (const arr of mm.values()) {
                 arr.forEach(fr => {
-                    const stem = fr.fileNameStem;
-                    createImageFromData(fr.treeInfo, stem, fr.identifiedTrees, {
+                    const hm = fr._hintMode || '';
+                    if (!hintMap.has(hm)) hintMap.set(hm, []);
+                    hintMap.get(hm).push(fr);
+                });
+            }
+
+            // Render hint-sections in a specific preferred order then any remaining hintModes
+            const preferredOrder = ['', 'clusters', 'densities', 'clusters,densities'];
+            const orderedKeys = [];
+            // Add preferred keys that exist
+            for (const k of preferredOrder) {
+                if (hintMap.has(k)) orderedKeys.push(k);
+            }
+            // Add any other keys found in hintMap that weren't in preferredOrder
+            for (const k of hintMap.keys()) {
+                if (!orderedKeys.includes(k)) orderedKeys.push(k);
+            }
+
+            for (const hintMode of orderedKeys) {
+                const members = hintMap.get(hintMode) || [];
+                const hintSection = document.createElement('div');
+                hintSection.className = 'hint-section';
+
+                const hintHeader = document.createElement('h5');
+                hintHeader.textContent = (hintMode === '' ? 'none' : hintMode);
+                hintHeader.style.margin = '0 0 0.4rem 0';
+                hintHeader.style.fontSize = '0.9rem';
+                hintHeader.style.color = '#444';
+                hintSection.appendChild(hintHeader);
+
+                const hintGrid = document.createElement('div');
+                hintGrid.className = 'group-grid';
+                hintSection.appendChild(hintGrid);
+
+                members.forEach(fr => {
+                    createImageFromData(fr.treeInfo, fr.fileNameStem, fr.identifiedTrees, {
                         modelTag: fr.modelTag,
                         modelHintTag: fr.modelHintTag,
                         sourceOriginal: fr.originalFile,
@@ -353,9 +387,13 @@ function processFileResults(fileResults, gallery) {
                         normalizedKey: fr._normalizedKey,
                         timestamp: fr._timestamp,
                         csvHash: group.csvHash
-                    }, modelGrid);
+                    }, hintGrid);
                 });
+
+                hintRow.appendChild(hintSection);
             }
+
+            modelSection.appendChild(hintRow);
 
             modelRow.appendChild(modelSection);
         }

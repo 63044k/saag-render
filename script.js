@@ -116,6 +116,112 @@ function handleFileSelect(event) {
     }
 }
 
+// Global array to hold generated images for zipping
+const generatedImages = [];
+// Store last run fileResults for building metadata
+let lastFileResults = [];
+
+// Wire up Download All button
+window.addEventListener('DOMContentLoaded', function() {
+    const btn = document.getElementById('download-all');
+    if (btn) {
+        async function ensureJSZip() {
+            if (typeof JSZip !== 'undefined') return JSZip;
+            // Dynamically load fallback script (no integrity) and wait for it
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js';
+                s.onload = () => {
+                    if (typeof JSZip !== 'undefined') resolve(JSZip);
+                    else reject(new Error('JSZip did not initialize'));
+                };
+                s.onerror = () => reject(new Error('Failed to load JSZip'));
+                document.head.appendChild(s);
+            });
+        }
+
+        btn.addEventListener('click', async function() {
+            if (generatedImages.length === 0) return;
+
+            try {
+                await ensureJSZip();
+            } catch (err) {
+                alert('Could not load JSZip library. Please check your network or try again later.');
+                console.error('JSZip load error', err);
+                return;
+            }
+
+            const zip = new JSZip();
+            for (const item of generatedImages) {
+                // item.data is a data URL like 'data:image/png;base64,...'
+                const base64 = item.data.split(',')[1];
+                zip.file(item.filename, base64, {base64: true});
+            }
+            // Build metadata manifest and add to zip
+            try {
+                const manifest = {
+                    generatedAt: new Date().toISOString(),
+                    images: generatedImages.map(g => ({
+                        filename: g.filename,
+                        originalFile: g.originalFile,
+                        model: g.model,
+                        hintMode: g.hintMode,
+                        normalizedKey: g.normalizedKey,
+                        modelTag: g.modelTag,
+                        modelHintTag: g.modelHintTag
+                    })),
+                    duplicates: {}
+                };
+
+                // include duplicate sets from lastFileResults
+                if (lastFileResults && lastFileResults.length > 0) {
+                    const modelGroups = {};
+                    const modelHintGroups = {};
+                    const mapping = {};
+                    lastFileResults.forEach(fr => {
+                        const m = fr._model || '<<unknown>>';
+                        const key = fr._normalizedKey || fr.identifiedTrees || '';
+                        if (!modelGroups[m]) modelGroups[m] = {};
+                        if (!modelGroups[m][key]) modelGroups[m][key] = [];
+                        modelGroups[m][key].push(fr.originalFile);
+
+                        const mh = fr._hintMode || '';
+                        if (!modelHintGroups[m]) modelHintGroups[m] = {};
+                        if (!modelHintGroups[m][mh]) modelHintGroups[m][mh] = {};
+                        if (!modelHintGroups[m][mh][key]) modelHintGroups[m][mh][key] = [];
+                        modelHintGroups[m][mh][key].push(fr.originalFile);
+                        // find produced filename(s) matching this originalFile in generatedImages
+                        const produced = generatedImages.filter(g => g.originalFile === fr.originalFile).map(g => g.filename);
+                        mapping[fr.originalFile] = produced;
+                    });
+
+                    manifest.duplicates.modelGroups = modelGroups;
+                    manifest.duplicates.modelHintGroups = modelHintGroups;
+                    manifest.mapping = mapping;
+                }
+
+                zip.file('metadata.json', JSON.stringify(manifest, null, 2));
+            } catch (me) {
+                console.warn('Could not create metadata manifest', me);
+            }
+
+            const content = await zip.generateAsync({type: 'blob'});
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            // generate timestamp YYYYMMDD-HHMMSS
+            const d = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const ts = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+            a.download = `${ts}_park_images.zip`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        });
+    }
+});
+
 function processFileResults(fileResults, gallery) {
     // Build grouping maps to detect duplicates
     // modelMap: model -> Map<identifiedKey, [indices]>
@@ -184,9 +290,19 @@ function processFileResults(fileResults, gallery) {
         }
     }
 
-    // Finally, render an image for every file, including any assigned tags
+    // Save last results for metadata
+    lastFileResults = fileResults;
+
+    // Finally, render an image for every file, including any assigned tags and metadata
     for (const fr of fileResults) {
-        createImageFromData(fr.treeInfo, fr.fileNameStem, fr.identifiedTrees, { modelTag: fr.modelTag, modelHintTag: fr.modelHintTag });
+        createImageFromData(fr.treeInfo, fr.fileNameStem, fr.identifiedTrees, {
+            modelTag: fr.modelTag,
+            modelHintTag: fr.modelHintTag,
+            sourceOriginal: fr.originalFile,
+            model: fr._model,
+            hintMode: fr._hintMode,
+            normalizedKey: fr._normalizedKey
+        });
     }
 }
 
@@ -528,23 +644,31 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     img.src = canvas.toDataURL('png');
     img.alt = `Park layout for ${fileNameStem}`;
     
-    const downloadLink = document.createElement('a');
-    downloadLink.href = img.src;
-    // Build download filename with appended tags if present
-    let downloadStem = fileNameStem;
-    if (tags && tags.modelTag) {
-        downloadStem += `_[${tags.modelTag}]`;
+    // Register generated image for bulk download (no per-image download link shown)
+    try {
+        // Build filename with appended tags if present
+        let downloadStem = fileNameStem;
+        if (tags && tags.modelTag) downloadStem += `_[${tags.modelTag}]`;
+        if (tags && tags.modelHintTag) downloadStem += `_[${tags.modelHintTag}]`;
+        generatedImages.push({ 
+            filename: `${downloadStem}.png`, 
+            data: img.src,
+            originalFile: tags && tags.sourceOriginal ? tags.sourceOriginal : null,
+            model: tags && tags.model ? tags.model : (tags && tags.sourceModel ? tags.sourceModel : null),
+            hintMode: tags && tags.hintMode ? tags.hintMode : (tags && tags.sourceHintMode ? tags.sourceHintMode : null),
+            normalizedKey: tags && tags.normalizedKey ? tags.normalizedKey : null,
+            modelTag: tags && tags.modelTag ? tags.modelTag : null,
+            modelHintTag: tags && tags.modelHintTag ? tags.modelHintTag : null
+        });
+        const btn = document.getElementById('download-all');
+        if (btn) btn.disabled = false;
+    } catch (e) {
+        console.warn('Could not register generated image for bulk download', e);
     }
-    if (tags && tags.modelHintTag) {
-        downloadStem += `_[${tags.modelHintTag}]`;
-    }
-    downloadLink.download = `${downloadStem}.png`;
-    downloadLink.textContent = `Download ${downloadStem}.png`;
     
     galleryItem.appendChild(title);
     galleryItem.appendChild(info);
     galleryItem.appendChild(img);
-    galleryItem.appendChild(downloadLink);
     gallery.appendChild(galleryItem);
 }
 

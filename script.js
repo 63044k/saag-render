@@ -679,8 +679,10 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
         parkDim.height * scale
     );
 
-    // 4. Draw remaining trees and shadows
+    // 4. Draw remaining trees: first shadows for all trees, then the tree bodies so trees appear on top of shadows
     const treeRadius = treeData.treeRadius * scale;
+
+    // First: draw shadows for each tree
     remainingTrees.forEach(tree => {
         const cx = (tree.x + border) * scale;
         const cy = canvas.height - ((tree.y + border) * scale);
@@ -693,6 +695,12 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
         ctx.beginPath();
         ctx.arc(cx, cy, shadowRadius, 0, 2 * Math.PI, false);
         ctx.fill();
+    });
+
+    // Second: draw tree bodies on top of shadows
+    remainingTrees.forEach(tree => {
+        const cx = (tree.x + border) * scale;
+        const cy = canvas.height - ((tree.y + border) * scale);
 
         ctx.fillStyle = 'darkgreen';
         ctx.beginPath();

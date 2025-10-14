@@ -24,7 +24,6 @@ function handleFileSelect(event) {
     const gallery = document.getElementById('image-gallery');
     gallery.innerHTML = ''; // Clear previous images
 
-    const processedIdentifiedTrees = new Set(); // Track unique identified tree sets
     const fileResults = []; // Store file processing results
 
     // First pass: collect all file data
@@ -83,8 +82,8 @@ function handleFileSelect(event) {
                     }
                 }
 
-                // Proceed to generate images
-                processFileResults(fileResults, processedIdentifiedTrees, gallery);
+                // Proceed to generate images (process all files; duplicates will be tagged)
+                processFileResults(fileResults, gallery);
             }
         };
 
@@ -92,21 +91,77 @@ function handleFileSelect(event) {
     }
 }
 
-function processFileResults(fileResults, processedIdentifiedTrees, gallery) {
-    for (const result of fileResults) {
-        const { treeInfo, fileNameStem, identifiedTrees, originalFile } = result;
-        
-        // Normalize identified trees for comparison
-        const identifiedTreesKey = normalizeIdentifiedTrees(identifiedTrees);
-        
-        if (processedIdentifiedTrees.has(identifiedTreesKey)) {
-            // Skip duplicate - add to skipped list
-            addSkippedFileNotice(gallery, fileNameStem, identifiedTrees);
-        } else {
-            // Process unique file
-            processedIdentifiedTrees.add(identifiedTreesKey);
-            createImageFromData(treeInfo, fileNameStem, identifiedTrees);
+function processFileResults(fileResults, gallery) {
+    // Build grouping maps to detect duplicates
+    // modelMap: model -> Map<identifiedKey, [indices]>
+    const modelMap = new Map();
+    // modelHintMap: model -> Map<hintMode -> Map<identifiedKey, [indices]>>
+    const modelHintMap = new Map();
+
+    fileResults.forEach((fr, idx) => {
+        const key = normalizeIdentifiedTrees(fr.identifiedTrees);
+        fr._normalizedKey = key;
+
+        const model = (fr.rawData && fr.rawData.llm && fr.rawData.llm.model) ? fr.rawData.llm.model : '<<unknown>>';
+        fr._model = model;
+
+        const hintMode = (fr.rawData && fr.rawData.scenario && fr.rawData.scenario.hintMode) ? fr.rawData.scenario.hintMode : '';
+        fr._hintMode = hintMode;
+
+        if (!modelMap.has(model)) modelMap.set(model, new Map());
+        const mm = modelMap.get(model);
+        if (!mm.has(key)) mm.set(key, []);
+        mm.get(key).push(idx);
+
+        if (!modelHintMap.has(model)) modelHintMap.set(model, new Map());
+        const mh = modelHintMap.get(model);
+        if (!mh.has(hintMode)) mh.set(hintMode, new Map());
+        const mhmap = mh.get(hintMode);
+        if (!mhmap.has(key)) mhmap.set(key, []);
+        mhmap.get(key).push(idx);
+    });
+
+    // helper: convert 0 -> A, 1 -> B, ... 25 -> Z, 26 -> AA, etc.
+    function indexToLetters(n) {
+        let s = '';
+        n++; // make 1-based
+        while (n > 0) {
+            const rem = (n - 1) % 26;
+            s = String.fromCharCode(65 + rem) + s;
+            n = Math.floor((n - 1) / 26);
         }
+        return s;
+    }
+
+    // Assign M.* tags per model groups
+    for (const [model, mm] of modelMap.entries()) {
+        let counter = 0;
+        for (const [key, arr] of mm.entries()) {
+            if (arr.length > 1) {
+                const tag = `M.${indexToLetters(counter)}`;
+                arr.forEach(i => fileResults[i].modelTag = tag);
+                counter++;
+            }
+        }
+    }
+
+    // Assign MH.* tags per model+hintMode groups
+    for (const [model, mh] of modelHintMap.entries()) {
+        for (const [hintMode, mhmap] of mh.entries()) {
+            let counter = 0;
+            for (const [key, arr] of mhmap.entries()) {
+                if (arr.length > 1) {
+                    const tag = `MH.${indexToLetters(counter)}`;
+                    arr.forEach(i => fileResults[i].modelHintTag = tag);
+                    counter++;
+                }
+            }
+        }
+    }
+
+    // Finally, render an image for every file, including any assigned tags
+    for (const fr of fileResults) {
+        createImageFromData(fr.treeInfo, fr.fileNameStem, fr.identifiedTrees, { modelTag: fr.modelTag, modelHintTag: fr.modelHintTag });
     }
 }
 
@@ -294,7 +349,7 @@ function addSkippedFileNotice(gallery, fileNameStem, identifiedTrees) {
 }
 
 
-function createImageFromData(treeData, fileNameStem, identifiedTrees) {
+function createImageFromData(treeData, fileNameStem, identifiedTrees, tags = {}) {
     const gallery = document.getElementById('image-gallery');
 
     const parkDim = { width: 30, height: 30 };
@@ -330,11 +385,11 @@ function createImageFromData(treeData, fileNameStem, identifiedTrees) {
     }
     
     // Draw everything immediately since person image is already loaded
-    drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, totalDim, remainingTrees, treeData, personImage, gallery, fileNameStem, identifiedTrees, treesToRemove);
+    drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, totalDim, remainingTrees, treeData, personImage, gallery, fileNameStem, identifiedTrees, treesToRemove, tags);
 }
 
 
-function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, totalDim, remainingTrees, treeData, personImg, gallery, fileNameStem, identifiedTrees, treesToRemove) {
+function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, totalDim, remainingTrees, treeData, personImg, gallery, fileNameStem, identifiedTrees, treesToRemove, tags = {}) {
     // 1. Draw base grey background
     ctx.fillStyle = 'grey';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -418,6 +473,15 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     title.style.margin = '0 0 1rem 0';
     title.style.fontSize = '1.1rem';
     title.textContent = fileNameStem;
+    // Append tags if present
+    if (tags && (tags.modelTag || tags.modelHintTag)) {
+        const tagSpan = document.createElement('span');
+        tagSpan.style.marginLeft = '0.5rem';
+        tagSpan.style.fontSize = '0.9rem';
+        tagSpan.style.color = '#0056b3';
+        tagSpan.textContent = ` ${tags.modelTag ? '[' + tags.modelTag + ']' : ''}${tags.modelHintTag ? ' ' + '[' + tags.modelHintTag + ']' : ''}`;
+        title.appendChild(tagSpan);
+    }
     
     const info = document.createElement('p');
     info.style.margin = '0 0 1rem 0';

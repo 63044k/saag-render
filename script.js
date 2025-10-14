@@ -66,59 +66,8 @@ function handleFileSelect(event) {
 
             filesProcessed++;
             if (filesProcessed === totalFiles) {
-                // All files processed, now optionally validate that all files model the same park
-                const checkSameParkEl = document.getElementById('check-same-park');
-                const shouldCheckSamePark = checkSameParkEl ? checkSameParkEl.checked : true;
-                const checkSameMetaEl = document.getElementById('check-same-meta');
-                const shouldCheckSameMeta = checkSameMetaEl ? checkSameMetaEl.checked : true;
-                const checkSameTimestampEl = document.getElementById('check-same-timestamp');
-                const shouldCheckSameTimestamp = checkSameTimestampEl ? checkSameTimestampEl.checked : true;
-
-                let parkOk = true;
-                let metaOk = true;
-
-                if (shouldCheckSamePark) {
-                    parkOk = validateSamePark(fileResults, gallery);
-                    if (!parkOk) {
-                        // Validation failed — do not proceed to generate images
-                        return;
-                    }
-                }
-
-                if (shouldCheckSameMeta) {
-                    metaOk = validateSameMeta(fileResults, gallery);
-                    if (!metaOk) {
-                        // Validation failed — do not proceed to generate images
-                        return;
-                    }
-                }
-
-                if (shouldCheckSameTimestamp) {
-                    const tsOk = validateSameTimestamp(fileResults, gallery);
-                    if (!tsOk) return;
-                }
-
-                // If both checks were requested and both passed, render the original (no-removal) park image
-                if (shouldCheckSamePark && shouldCheckSameMeta && parkOk && metaOk && fileResults.length > 0) {
-                    // Derive a concise filename stem from the first file
-                    function deriveOriginalStem(stem) {
-                        if (!stem) return stem;
-                        // find the position of the second closing bracket ]
-                        const firstIdx = stem.indexOf(']');
-                        if (firstIdx === -1) return stem;
-                        const secondIdx = stem.indexOf(']', firstIdx + 1);
-                        if (secondIdx === -1) return stem;
-                        // include up to secondIdx
-                        return stem.substring(0, secondIdx + 1);
-                    }
-
-                    const first = fileResults[0];
-                    const originalStem = deriveOriginalStem(first.fileNameStem) || first.fileNameStem;
-                    // Render the original park (no trees removed)
-                    createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL' });
-                }
-
-                // Proceed to generate images (process all files; duplicates will be tagged)
+                // All files processed — always proceed to grouping/rendering.
+                // Any differences simply form separate groups (no aborts).
                 processFileResults(fileResults, gallery);
             }
         };
@@ -131,6 +80,28 @@ function handleFileSelect(event) {
 const generatedImages = [];
 // Store last run fileResults for building metadata
 let lastFileResults = [];
+// Store last grouping info for metadata
+let lastGroups = [];
+
+// Helper: derive concise original stem from a filename stem (up to second ])
+function deriveOriginalStem(stem) {
+    if (!stem) return stem;
+    const firstIdx = stem.indexOf(']');
+    if (firstIdx === -1) return stem;
+    const secondIdx = stem.indexOf(']', firstIdx + 1);
+    if (secondIdx === -1) return stem;
+    return stem.substring(0, secondIdx + 1);
+}
+
+// Helper: create canonical park signature string from treeInfo (same as validateSamePark uses)
+function getParkSignature(treeInfo) {
+    const w = treeInfo.width || treeInfo.parkWidth || 30;
+    const h = treeInfo.height || treeInfo.parkHeight || 30;
+    const r = treeInfo.treeRadius || 0;
+    const coords = (treeInfo.trees || []).map(t => `${t.treeId}:${Number(t.x).toFixed(6)},${Number(t.y).toFixed(6)}`);
+    coords.sort();
+    return `${w}x${h}|r=${r}|${coords.join('|')}`;
+}
 
 // Wire up Download All button
 window.addEventListener('DOMContentLoaded', function() {
@@ -180,12 +151,14 @@ window.addEventListener('DOMContentLoaded', function() {
                         normalizedKey: g.normalizedKey,
                         timestamp: g.timestamp,
                         modelTag: g.modelTag,
-                        modelHintTag: g.modelHintTag
+                        modelHintTag: g.modelHintTag,
+                        groupTag: g.groupTag || null
                     })),
+                    groups: lastGroups || [],
                     duplicates: {}
                 };
 
-                // include duplicate sets from lastFileResults
+                // include duplicate sets and mapping from lastFileResults for compatibility
                 if (lastFileResults && lastFileResults.length > 0) {
                     const modelGroups = {};
                     const modelHintGroups = {};
@@ -235,33 +208,29 @@ window.addEventListener('DOMContentLoaded', function() {
 });
 
 function processFileResults(fileResults, gallery) {
-    // Build grouping maps to detect duplicates
-    // modelMap: model -> Map<identifiedKey, [indices]>
-    const modelMap = new Map();
-    // modelHintMap: model -> Map<hintMode -> Map<identifiedKey, [indices]>>
-    const modelHintMap = new Map();
+    // Group files by park signature + meta.tag + meta.timestamp
+    lastFileResults = fileResults;
+    generatedImages.length = 0;
+    lastGroups = [];
 
-    fileResults.forEach((fr, idx) => {
-        const key = normalizeIdentifiedTrees(fr.identifiedTrees);
-        fr._normalizedKey = key;
+    // Build groups map
+    const groups = new Map();
+    fileResults.forEach(fr => {
+        const sig = getParkSignature(fr.treeInfo);
+        const tag = fr.rawData && fr.rawData.meta && fr.rawData.meta.tag ? String(fr.rawData.meta.tag) : '';
+        const ts = fr._timestamp || '';
+        const csvHash = fr.rawData && fr.rawData.scenario && fr.rawData.scenario.csvHash ? String(fr.rawData.scenario.csvHash) : '';
+        const gkey = `${sig}||${tag}||${ts}`;
+        if (!groups.has(gkey)) groups.set(gkey, { sig, tag, ts, csvHash, members: [] });
+        groups.get(gkey).members.push(fr);
+    });
 
-        const model = (fr.rawData && fr.rawData.llm && fr.rawData.llm.model) ? fr.rawData.llm.model : '<<unknown>>';
-        fr._model = model;
-
-        const hintMode = (fr.rawData && fr.rawData.scenario && fr.rawData.scenario.hintMode) ? fr.rawData.scenario.hintMode : '';
-        fr._hintMode = hintMode;
-
-        if (!modelMap.has(model)) modelMap.set(model, new Map());
-        const mm = modelMap.get(model);
-        if (!mm.has(key)) mm.set(key, []);
-        mm.get(key).push(idx);
-
-        if (!modelHintMap.has(model)) modelHintMap.set(model, new Map());
-        const mh = modelHintMap.get(model);
-        if (!mh.has(hintMode)) mh.set(hintMode, new Map());
-        const mhmap = mh.get(hintMode);
-        if (!mhmap.has(key)) mhmap.set(key, []);
-        mhmap.get(key).push(idx);
+    // Order groups by the first file appearance in original selection
+    const orderedGroups = Array.from(groups.values());
+    orderedGroups.sort((a, b) => {
+        const aIdx = fileResults.indexOf(a.members[0]);
+        const bIdx = fileResults.indexOf(b.members[0]);
+        return aIdx - bIdx;
     });
 
     // helper: convert 0 -> A, 1 -> B, ... 25 -> Z, 26 -> AA, etc.
@@ -276,47 +245,99 @@ function processFileResults(fileResults, gallery) {
         return s;
     }
 
-    // Assign M.* tags per model groups
-    for (const [model, mm] of modelMap.entries()) {
-        let counter = 0;
-        for (const [key, arr] of mm.entries()) {
-            if (arr.length > 1) {
-                const tag = `M.${indexToLetters(counter)}`;
-                arr.forEach(i => fileResults[i].modelTag = tag);
-                counter++;
-            }
-        }
-    }
+    // Render each group as its own section, assign tags locally within group
+    orderedGroups.forEach((group, gi) => {
+        const section = document.createElement('div');
+        section.className = 'group-section';
+    const header = document.createElement('h3');
+    // Display order: timestamp first, csvHash second (named "park layout"), tag last (named "run tag")
+    header.textContent = `Group ${gi + 1}: timestamp="${group.ts}" park layout="${group.csvHash}" run tag="${group.tag}" members=${group.members.length}`;
+        section.appendChild(header);
+        gallery.appendChild(section);
 
-    // Assign MH.* tags per model+hintMode groups
-    for (const [model, mh] of modelHintMap.entries()) {
-        for (const [hintMode, mhmap] of mh.entries()) {
+        // build duplicate maps local to group
+        const modelMap = new Map();
+        const modelHintMap = new Map();
+
+        group.members.forEach((fr, idx) => {
+            const key = normalizeIdentifiedTrees(fr.identifiedTrees);
+            fr._normalizedKey = key;
+            const model = (fr.rawData && fr.rawData.llm && fr.rawData.llm.model) ? fr.rawData.llm.model : '<<unknown>>';
+            fr._model = model;
+            const hintMode = (fr.rawData && fr.rawData.scenario && fr.rawData.scenario.hintMode) ? fr.rawData.scenario.hintMode : '';
+            fr._hintMode = hintMode;
+
+            if (!modelMap.has(model)) modelMap.set(model, new Map());
+            const mm = modelMap.get(model);
+            if (!mm.has(key)) mm.set(key, []);
+            mm.get(key).push(fr);
+
+            const mhKey = model + '|' + hintMode;
+            if (!modelHintMap.has(mhKey)) modelHintMap.set(mhKey, new Map());
+            const mhmap = modelHintMap.get(mhKey);
+            if (!mhmap.has(key)) mhmap.set(key, []);
+            mhmap.get(key).push(fr);
+        });
+
+        // assign M.* within group
+        for (const [model, mm] of modelMap.entries()) {
             let counter = 0;
-            for (const [key, arr] of mhmap.entries()) {
+            for (const [k, arr] of mm.entries()) {
                 if (arr.length > 1) {
-                    const tag = `MH.${indexToLetters(counter)}`;
-                    arr.forEach(i => fileResults[i].modelHintTag = tag);
+                    const tag = `M.${indexToLetters(counter)}`;
+                    arr.forEach(fr => {
+                        fr.modelTag = fr.modelTag || tag;
+                    });
                     counter++;
                 }
             }
         }
-    }
 
-    // Save last results for metadata
-    lastFileResults = fileResults;
+        // assign MH.* within group
+        for (const [mhKey, mhmap] of modelHintMap.entries()) {
+            let counter = 0;
+            for (const [k, arr] of mhmap.entries()) {
+                if (arr.length > 1) {
+                    const tag = `MH.${indexToLetters(counter)}`;
+                    arr.forEach(fr => {
+                        fr.modelHintTag = fr.modelHintTag || tag;
+                    });
+                    counter++;
+                }
+            }
+        }
 
-    // Finally, render an image for every file, including any assigned tags and metadata
-    for (const fr of fileResults) {
-        createImageFromData(fr.treeInfo, fr.fileNameStem, fr.identifiedTrees, {
-            modelTag: fr.modelTag,
-            modelHintTag: fr.modelHintTag,
-            sourceOriginal: fr.originalFile,
-            model: fr._model,
-            hintMode: fr._hintMode,
-            normalizedKey: fr._normalizedKey,
-            timestamp: fr._timestamp
+        // create ORIGINAL from first member
+        const first = group.members[0];
+        const originalStem = deriveOriginalStem(first.fileNameStem) || first.fileNameStem;
+    createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash }, section);
+
+        // render members
+        group.members.forEach(fr => {
+            const stem = fr.fileNameStem;
+            createImageFromData(fr.treeInfo, stem, fr.identifiedTrees, {
+                modelTag: fr.modelTag,
+                modelHintTag: fr.modelHintTag,
+                sourceOriginal: fr.originalFile,
+                model: fr._model,
+                hintMode: fr._hintMode,
+                normalizedKey: fr._normalizedKey,
+                timestamp: fr._timestamp,
+                csvHash: group.csvHash
+            }, section);
         });
-    }
+
+        // record for manifest
+        lastGroups.push({
+            tag: group.tag,
+            timestamp: group.ts,
+            csvHash: group.csvHash,
+            // friendly aliases for external consumption
+            parkLayout: group.csvHash,
+            runTag: group.tag,
+            members: group.members.map(m => ({ file: m.originalFile, tags: [m.modelTag, m.modelHintTag].filter(Boolean) }))
+        });
+    });
 }
 
 // Validate that all uploaded files share the same meta.timestamp value.
@@ -556,8 +577,8 @@ function addSkippedFileNotice(gallery, fileNameStem, identifiedTrees) {
 }
 
 
-function createImageFromData(treeData, fileNameStem, identifiedTrees, tags = {}) {
-    const gallery = document.getElementById('image-gallery');
+function createImageFromData(treeData, fileNameStem, identifiedTrees, tags = {}, galleryOverride) {
+    const gallery = galleryOverride || document.getElementById('image-gallery');
 
     const parkDim = { width: 30, height: 30 };
     const border = 2;
@@ -587,7 +608,7 @@ function createImageFromData(treeData, fileNameStem, identifiedTrees, tags = {})
     
     // Check if person image is ready, if not wait a bit
     if (!personImageLoaded) {
-        setTimeout(() => createImageFromData(treeData, fileNameStem, identifiedTrees), 100);
+        setTimeout(() => createImageFromData(treeData, fileNameStem, identifiedTrees, tags, galleryOverride), 100);
         return;
     }
     
@@ -716,16 +737,18 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
         let downloadStem = fileNameStem;
         if (tags && tags.modelTag) downloadStem += `_[${tags.modelTag}]`;
         if (tags && tags.modelHintTag) downloadStem += `_[${tags.modelHintTag}]`;
-        generatedImages.push({ 
-            filename: `${downloadStem}.png`, 
+        generatedImages.push({
+            filename: `${downloadStem}.png`,
             data: img.src,
             originalFile: tags && tags.sourceOriginal ? tags.sourceOriginal : null,
             model: tags && tags.model ? tags.model : (tags && tags.sourceModel ? tags.sourceModel : null),
             hintMode: tags && tags.hintMode ? tags.hintMode : (tags && tags.sourceHintMode ? tags.sourceHintMode : null),
             normalizedKey: tags && tags.normalizedKey ? tags.normalizedKey : null,
             timestamp: tags && tags.timestamp ? tags.timestamp : null,
+            csvHash: tags && tags.csvHash ? tags.csvHash : (treeData && treeData.csvHash ? treeData.csvHash : null),
             modelTag: tags && tags.modelTag ? tags.modelTag : null,
-            modelHintTag: tags && tags.modelHintTag ? tags.modelHintTag : null
+            modelHintTag: tags && tags.modelHintTag ? tags.modelHintTag : null,
+            groupTag: tags && tags.groupTag ? tags.groupTag : null
         });
         const btn = document.getElementById('download-all');
         if (btn) btn.disabled = false;

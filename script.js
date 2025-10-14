@@ -530,8 +530,16 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     
     const downloadLink = document.createElement('a');
     downloadLink.href = img.src;
-    downloadLink.download = `${fileNameStem}.png`;
-    downloadLink.textContent = `Download ${fileNameStem}.png`;
+    // Build download filename with appended tags if present
+    let downloadStem = fileNameStem;
+    if (tags && tags.modelTag) {
+        downloadStem += `_[${tags.modelTag}]`;
+    }
+    if (tags && tags.modelHintTag) {
+        downloadStem += `_[${tags.modelHintTag}]`;
+    }
+    downloadLink.download = `${downloadStem}.png`;
+    downloadLink.textContent = `Download ${downloadStem}.png`;
     
     galleryItem.appendChild(title);
     galleryItem.appendChild(info);

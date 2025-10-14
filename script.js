@@ -252,8 +252,12 @@ function processFileResults(fileResults, gallery) {
     const header = document.createElement('h3');
     // Display order: timestamp first, csvHash second (named "park layout"), tag last (named "run tag")
     header.textContent = `Group ${gi + 1}: timestamp="${group.ts}" park layout="${group.csvHash}" run tag="${group.tag}" members=${group.members.length}`;
-        section.appendChild(header);
-        gallery.appendChild(section);
+    section.appendChild(header);
+    // create a grid container for this group's images
+    const grid = document.createElement('div');
+    grid.className = 'group-grid';
+    section.appendChild(grid);
+    gallery.appendChild(section);
 
         // build duplicate maps local to group
         const modelMap = new Map();
@@ -310,7 +314,7 @@ function processFileResults(fileResults, gallery) {
         // create ORIGINAL from first member
         const first = group.members[0];
         const originalStem = deriveOriginalStem(first.fileNameStem) || first.fileNameStem;
-    createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash }, section);
+    createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash }, grid);
 
         // render members
         group.members.forEach(fr => {
@@ -324,7 +328,7 @@ function processFileResults(fileResults, gallery) {
                 normalizedKey: fr._normalizedKey,
                 timestamp: fr._timestamp,
                 csvHash: group.csvHash
-            }, section);
+            }, grid);
         });
 
         // record for manifest

@@ -41,6 +41,22 @@
             display: none;
         }
         #image-gallery {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .group-section {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+        }
+        .group-section h3 {
+            margin: 0 0 1rem 0;
+            font-size: 1.05rem;
+            color: #222;
+        }
+        .group-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 1.5rem;

@@ -68,18 +68,43 @@ function handleFileSelect(event) {
                 const checkSameMetaEl = document.getElementById('check-same-meta');
                 const shouldCheckSameMeta = checkSameMetaEl ? checkSameMetaEl.checked : true;
 
+                let parkOk = true;
+                let metaOk = true;
+
                 if (shouldCheckSamePark) {
-                    if (!validateSamePark(fileResults, gallery)) {
+                    parkOk = validateSamePark(fileResults, gallery);
+                    if (!parkOk) {
                         // Validation failed — do not proceed to generate images
                         return;
                     }
                 }
 
                 if (shouldCheckSameMeta) {
-                    if (!validateSameMeta(fileResults, gallery)) {
+                    metaOk = validateSameMeta(fileResults, gallery);
+                    if (!metaOk) {
                         // Validation failed — do not proceed to generate images
                         return;
                     }
+                }
+
+                // If both checks were requested and both passed, render the original (no-removal) park image
+                if (shouldCheckSamePark && shouldCheckSameMeta && parkOk && metaOk && fileResults.length > 0) {
+                    // Derive a concise filename stem from the first file
+                    function deriveOriginalStem(stem) {
+                        if (!stem) return stem;
+                        // find the position of the second closing bracket ]
+                        const firstIdx = stem.indexOf(']');
+                        if (firstIdx === -1) return stem;
+                        const secondIdx = stem.indexOf(']', firstIdx + 1);
+                        if (secondIdx === -1) return stem;
+                        // include up to secondIdx
+                        return stem.substring(0, secondIdx + 1);
+                    }
+
+                    const first = fileResults[0];
+                    const originalStem = deriveOriginalStem(first.fileNameStem) || first.fileNameStem;
+                    // Render the original park (no trees removed)
+                    createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL' });
                 }
 
                 // Proceed to generate images (process all files; duplicates will be tagged)

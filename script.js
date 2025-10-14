@@ -350,7 +350,7 @@ function processFileResults(fileResults, gallery) {
             }
 
             // Render hint-sections in a specific preferred order then any remaining hintModes
-            const preferredOrder = ['', 'clusters', 'densities', 'clusters,densities'];
+            const preferredOrder = ['none', 'clusters', 'densities', 'clusters,densities'];
             const orderedKeys = [];
             // Add preferred keys that exist
             for (const k of preferredOrder) {

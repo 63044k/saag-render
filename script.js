@@ -705,14 +705,19 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     title.style.margin = '0 0 1rem 0';
     title.style.fontSize = '1.1rem';
     title.textContent = fileNameStem;
-    // Append tags if present
+    // Tag line: show tags on their own line (or an empty placeholder line)
+    const tagLine = document.createElement('span');
+    tagLine.className = 'tag-line';
     if (tags && (tags.modelTag || tags.modelHintTag)) {
-        const tagSpan = document.createElement('span');
-        tagSpan.style.marginLeft = '0.5rem';
-        tagSpan.style.fontSize = '0.9rem';
-        tagSpan.style.color = '#0056b3';
-        tagSpan.textContent = ` ${tags.modelTag ? '[' + tags.modelTag + ']' : ''}${tags.modelHintTag ? ' ' + '[' + tags.modelHintTag + ']' : ''}`;
-        title.appendChild(tagSpan);
+        const parts = [];
+        if (tags.modelTag) parts.push('[' + tags.modelTag + ']');
+        if (tags.modelHintTag) parts.push('[' + tags.modelHintTag + ']');
+        // If any tag is a duplicate-set tag (starts with M. or MH.), prefix the line
+        const isDuplicateTag = (t) => typeof t === 'string' && (t.startsWith('M.') || t.startsWith('MH.'));
+        const shouldPrefix = isDuplicateTag(tags.modelTag) || isDuplicateTag(tags.modelHintTag);
+        tagLine.textContent = (shouldPrefix ? 'Duplicate sets: ' : '') + parts.join(' ');
+    } else {
+        tagLine.textContent = '';
     }
     
     const info = document.createElement('p');
@@ -724,16 +729,33 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     const removedCount = treesToRemove.size;
     const remainingCount = remainingTrees.length;
     
+    // If any trees were removed, show their IDs on the first line, then remaining on second line.
     if (removedCount > 0) {
-        info.innerHTML = `Trees removed: ${Array.from(treesToRemove).sort((a,b) => a-b).join(', ')}<br>` +
-                        `${remainingCount} of ${totalTrees} trees remaining`;
+        const removedList = Array.from(treesToRemove).sort((a,b)=>a-b).join(', ');
+        info.innerHTML = `Tree ids removed: ${removedList}<br>Trees remaining: ${remainingCount} (of ${totalTrees})`;
     } else {
-        info.textContent = `All ${totalTrees} trees shown (none removed)`;
+        info.textContent = `Trees remaining: ${remainingCount} (of ${totalTrees})`;
     }
     
     const img = document.createElement('img');
     img.src = canvas.toDataURL('png');
     img.alt = `Park layout for ${fileNameStem}`;
+    
+    // append image first, then an info container below the image
+    galleryItem.appendChild(img);
+    const infoBox = document.createElement('div');
+    infoBox.style.marginTop = '0.5rem';
+    infoBox.style.textAlign = 'left';
+    // filename (small, non-bold)
+    title.style.margin = '0 0 0.25rem 0';
+    title.style.fontSize = '0.78rem';
+    title.style.fontWeight = 'normal';
+    infoBox.appendChild(title);
+    // info paragraph
+    infoBox.appendChild(info);
+    // tags as a line inside the info paragraph so spacing matches intra-paragraph lines
+    info.appendChild(tagLine);
+    galleryItem.appendChild(infoBox);
     
     // Register generated image for bulk download (no per-image download link shown)
     try {
@@ -760,9 +782,7 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
         console.warn('Could not register generated image for bulk download', e);
     }
     
-    galleryItem.appendChild(title);
-    galleryItem.appendChild(info);
-    galleryItem.appendChild(img);
+    // add the gallery item into the provided gallery container
     gallery.appendChild(galleryItem);
 }
 

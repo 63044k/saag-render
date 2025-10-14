@@ -58,13 +58,14 @@
         }
         .group-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            /* reduce min card size so images appear smaller on screen */
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 1.5rem;
         }
         /* Make the ORIGINAL box behave like a single-row grid so its card matches other gallery items */
         .original-box {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 1.5rem;
             margin-bottom: 1rem;
         }

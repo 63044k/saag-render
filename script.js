@@ -47,12 +47,16 @@ function handleFileSelect(event) {
                 const fileNameStem = file.name.replace(/\.json$/, '');
                 const identifiedTrees = data.result?.identifiedTrees || '';
                 
+                // extract timestamp if present under data.meta.timestamp
+                const timestamp = data.meta && data.meta.timestamp ? String(data.meta.timestamp) : null;
+
                 fileResults.push({
                     treeInfo,
                     fileNameStem,
                     identifiedTrees,
                     originalFile: file.name,
-                    rawData: data
+                    rawData: data,
+                    _timestamp: timestamp
                 });
 
             } catch (error) {
@@ -67,6 +71,8 @@ function handleFileSelect(event) {
                 const shouldCheckSamePark = checkSameParkEl ? checkSameParkEl.checked : true;
                 const checkSameMetaEl = document.getElementById('check-same-meta');
                 const shouldCheckSameMeta = checkSameMetaEl ? checkSameMetaEl.checked : true;
+                const checkSameTimestampEl = document.getElementById('check-same-timestamp');
+                const shouldCheckSameTimestamp = checkSameTimestampEl ? checkSameTimestampEl.checked : true;
 
                 let parkOk = true;
                 let metaOk = true;
@@ -85,6 +91,11 @@ function handleFileSelect(event) {
                         // Validation failed — do not proceed to generate images
                         return;
                     }
+                }
+
+                if (shouldCheckSameTimestamp) {
+                    const tsOk = validateSameTimestamp(fileResults, gallery);
+                    if (!tsOk) return;
                 }
 
                 // If both checks were requested and both passed, render the original (no-removal) park image
@@ -167,6 +178,7 @@ window.addEventListener('DOMContentLoaded', function() {
                         model: g.model,
                         hintMode: g.hintMode,
                         normalizedKey: g.normalizedKey,
+                        timestamp: g.timestamp,
                         modelTag: g.modelTag,
                         modelHintTag: g.modelHintTag
                     })),
@@ -301,9 +313,63 @@ function processFileResults(fileResults, gallery) {
             sourceOriginal: fr.originalFile,
             model: fr._model,
             hintMode: fr._hintMode,
-            normalizedKey: fr._normalizedKey
+            normalizedKey: fr._normalizedKey,
+            timestamp: fr._timestamp
         });
     }
+}
+
+// Validate that all uploaded files share the same meta.timestamp value.
+// Returns true if all files match; otherwise appends an error notice to the gallery and returns false.
+function validateSameTimestamp(fileResults, gallery) {
+    if (!fileResults || fileResults.length === 0) return true;
+
+    const timestamps = fileResults.map(fr => fr._timestamp || null);
+    const unique = Array.from(new Set(timestamps.filter(t => t !== null)));
+
+    // If no timestamps present across files, consider them matching
+    if (unique.length <= 1) return true;
+
+    // Mismatch detected — show a clear failure notice in the gallery
+    const galleryItem = document.createElement('div');
+    galleryItem.className = 'gallery-item';
+    galleryItem.style.backgroundColor = '#fff3f3';
+    galleryItem.style.border = '2px solid #dc3545';
+
+    const notice = document.createElement('div');
+    notice.style.padding = '1.5rem';
+    notice.style.textAlign = 'left';
+
+    const title = document.createElement('h3');
+    title.textContent = `Timestamp mismatch — processing aborted`;
+    title.style.margin = '0 0 0.5rem 0';
+    title.style.color = '#a71d2a';
+
+    const msg = document.createElement('p');
+    msg.textContent = 'The selected files do not all contain the same meta.timestamp. Please select files with the same timestamp.';
+    msg.style.margin = '0 0 0.75rem 0';
+
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    summary.textContent = 'View detected timestamps';
+    details.appendChild(summary);
+
+    const list = document.createElement('ul');
+    for (let i = 0; i < fileResults.length; i++) {
+        const li = document.createElement('li');
+        const raw = fileResults[i]._timestamp || 'none';
+        li.textContent = `${fileResults[i].originalFile}: ${raw}`;
+        list.appendChild(li);
+    }
+    details.appendChild(list);
+
+    notice.appendChild(title);
+    notice.appendChild(msg);
+    notice.appendChild(details);
+    galleryItem.appendChild(notice);
+    gallery.appendChild(galleryItem);
+
+    return false;
 }
 
 function normalizeIdentifiedTrees(identifiedTrees) {
@@ -657,6 +723,7 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
             model: tags && tags.model ? tags.model : (tags && tags.sourceModel ? tags.sourceModel : null),
             hintMode: tags && tags.hintMode ? tags.hintMode : (tags && tags.sourceHintMode ? tags.sourceHintMode : null),
             normalizedKey: tags && tags.normalizedKey ? tags.normalizedKey : null,
+            timestamp: tags && tags.timestamp ? tags.timestamp : null,
             modelTag: tags && tags.modelTag ? tags.modelTag : null,
             modelHintTag: tags && tags.modelHintTag ? tags.modelHintTag : null
         });

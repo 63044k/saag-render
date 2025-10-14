@@ -61,6 +61,17 @@
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
             gap: 1.5rem;
         }
+        /* Make the ORIGINAL box behave like a single-row grid so its card matches other gallery items */
+        .original-box {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .original-box .gallery-item {
+            /* let the gallery-item card control sizing (same as others) */
+            display: block;
+        }
         .tag-line {
             display: block; /* placed inside the paragraph as a separate line */
             margin: 0.15rem 0 0 0; /* small top gap only */

@@ -249,15 +249,18 @@ function processFileResults(fileResults, gallery) {
     orderedGroups.forEach((group, gi) => {
         const section = document.createElement('div');
         section.className = 'group-section';
-    const header = document.createElement('h3');
-    // Display order: timestamp first, csvHash second (named "park layout"), tag last (named "run tag")
-    header.textContent = `Group ${gi + 1}: timestamp="${group.ts}" park layout="${group.csvHash}" run tag="${group.tag}" members=${group.members.length}`;
-    section.appendChild(header);
-    // create a grid container for this group's images
-    const grid = document.createElement('div');
-    grid.className = 'group-grid';
-    section.appendChild(grid);
-    gallery.appendChild(section);
+        const header = document.createElement('h3');
+        // Display order: timestamp first, csvHash second (named "park layout"), tag last (named "run tag")
+        header.textContent = `Group ${gi + 1}: timestamp="${group.ts}" park layout="${group.csvHash}" run tag="${group.tag}" members=${group.members.length}`;
+        section.appendChild(header);
+        // create an original box (single row) and a grid for solution images
+        const originalBox = document.createElement('div');
+        originalBox.className = 'original-box';
+        const solutionsGrid = document.createElement('div');
+        solutionsGrid.className = 'group-grid';
+        section.appendChild(originalBox);
+        section.appendChild(solutionsGrid);
+        gallery.appendChild(section);
 
         // build duplicate maps local to group
         const modelMap = new Map();
@@ -311,13 +314,14 @@ function processFileResults(fileResults, gallery) {
             }
         }
 
-        // create ORIGINAL from first member
+        // create ORIGINAL from first member (displayed full-width in originalBox)
         const first = group.members[0];
         const originalStem = deriveOriginalStem(first.fileNameStem) || first.fileNameStem;
-    createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash }, grid);
+        createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash }, originalBox);
 
-        // render members
-        group.members.forEach(fr => {
+        // render member solution images in the solutionsGrid (skip the first, which is ORIGINAL)
+        group.members.forEach((fr, idx) => {
+            if (idx === 0) return;
             const stem = fr.fileNameStem;
             createImageFromData(fr.treeInfo, stem, fr.identifiedTrees, {
                 modelTag: fr.modelTag,
@@ -328,7 +332,7 @@ function processFileResults(fileResults, gallery) {
                 normalizedKey: fr._normalizedKey,
                 timestamp: fr._timestamp,
                 csvHash: group.csvHash
-            }, grid);
+            }, solutionsGrid);
         });
 
         // record for manifest
@@ -729,12 +733,17 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     const removedCount = treesToRemove.size;
     const remainingCount = remainingTrees.length;
     
-    // If any trees were removed, show their IDs on the first line, then remaining on second line.
-    if (removedCount > 0) {
-        const removedList = Array.from(treesToRemove).sort((a,b)=>a-b).join(', ');
-        info.innerHTML = `Tree ids removed: ${removedList}<br>Trees remaining: ${remainingCount} (of ${totalTrees})`;
+    // For ORIGINAL images we do not display tree counts
+    if (tags && tags.modelTag === 'ORIGINAL') {
+        info.textContent = '';
     } else {
-        info.textContent = `Trees remaining: ${remainingCount} (of ${totalTrees})`;
+        // If any trees were removed, show their IDs on the first line, then remaining on second line.
+        if (removedCount > 0) {
+            const removedList = Array.from(treesToRemove).sort((a,b)=>a-b).join(', ');
+            info.innerHTML = `Tree ids removed: ${removedList}<br>Trees remaining: ${remainingCount} (of ${totalTrees})`;
+        } else {
+            info.textContent = `Trees remaining: ${remainingCount} (of ${totalTrees})`;
+        }
     }
     
     const img = document.createElement('img');

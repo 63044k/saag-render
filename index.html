@@ -127,6 +127,16 @@
             line-height: 1.1;
             color: #222;
         }
+        /* When filenames are hidden, collapse the h3 element visually but keep it in the DOM for accessibility */
+        body.hide-filenames .gallery-item h3 {
+            height: 0;
+            margin: 0;
+            padding: 0;
+            opacity: 0;
+            overflow: hidden;
+            font-size: 0; /* reduce occupied space */
+            line-height: 0;
+        }
         .gallery-item img {
             max-width: 100%;
             height: auto;
@@ -158,7 +168,11 @@
             <input type="file" id="file-input" accept=".json" multiple>
             <div style="margin-top: 1rem; font-size: 0.95rem; color: #444; display:flex; gap:1rem; flex-direction:column;">
                 <!-- Validation checkboxes removed — grouping will handle any differences -->
-                <div>
+                <div style="display:flex; gap:1rem; align-items:center;">
+                    <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.95rem; color:#333;">
+                        <input type="checkbox" id="toggle-filenames" />
+                        Show filenames
+                    </label>
                     <button id="download-all" disabled style="margin-top:0.5rem; padding:8px 14px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer;">Download All Images</button>
                 </div>
             </div>

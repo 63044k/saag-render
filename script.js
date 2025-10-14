@@ -205,6 +205,26 @@ window.addEventListener('DOMContentLoaded', function() {
             URL.revokeObjectURL(url);
         });
     }
+
+    // Wire filename toggle checkbox (default: filenames hidden)
+    const toggle = document.getElementById('toggle-filenames');
+    try {
+        const saved = localStorage.getItem('showFilenames');
+        const show = saved === 'true';
+        if (toggle) {
+            toggle.checked = show;
+            if (!show) document.body.classList.add('hide-filenames');
+            toggle.addEventListener('change', () => {
+                const on = !!toggle.checked;
+                if (on) document.body.classList.remove('hide-filenames');
+                else document.body.classList.add('hide-filenames');
+                try { localStorage.setItem('showFilenames', String(on)); } catch (e) {}
+            });
+        }
+    } catch (e) {
+        if (toggle) toggle.checked = false;
+        document.body.classList.add('hide-filenames');
+    }
 });
 
 function processFileResults(fileResults, gallery) {

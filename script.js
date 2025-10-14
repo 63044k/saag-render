@@ -319,9 +319,8 @@ function processFileResults(fileResults, gallery) {
         const originalStem = deriveOriginalStem(first.fileNameStem) || first.fileNameStem;
         createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash }, originalBox);
 
-        // render member solution images in the solutionsGrid (skip the first, which is ORIGINAL)
+        // render member solution images in the solutionsGrid (include the first so ORIGINAL and solution both show)
         group.members.forEach((fr, idx) => {
-            if (idx === 0) return;
             const stem = fr.fileNameStem;
             createImageFromData(fr.treeInfo, stem, fr.identifiedTrees, {
                 modelTag: fr.modelTag,

@@ -128,11 +128,10 @@
 
         /* Highlight the entire solution panel when hovered via a duplicate-set tag */
         .gallery-item.highlighted-solution {
-            box-shadow: 0 6px 18px rgba(0,86,179,0.22);
-            border: 2px solid rgba(0,86,179,0.22);
             background-color: salmon; /* salmon-pink highlight */
-            transform: translateY(-2px);
-            transition: all 120ms ease-in-out, background-color 120ms ease-in-out;
+            /* stronger shadow for visibility without affecting layout */
+            box-shadow: 0 12px 36px rgba(0,0,0,0.20);
+            transition: background-color 120ms ease-in-out, box-shadow 120ms ease-in-out;
         }
         .gallery-item h3 {
             /* allow long file name stems to wrap across lines; make them small and italic */

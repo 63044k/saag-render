@@ -411,6 +411,23 @@ function processFileResults(fileResults, gallery) {
                 hintGrid.className = 'group-grid';
                 hintSection.appendChild(hintGrid);
 
+                // Sort members by number of trees removed (least -> most), then by normalized id string as tiebreaker
+                members.sort((a, b) => {
+                    try {
+                        const na = normalizeIdentifiedTrees(a.identifiedTrees || '');
+                        const nb = normalizeIdentifiedTrees(b.identifiedTrees || '');
+                        const arrA = JSON.parse(na || '[]');
+                        const arrB = JSON.parse(nb || '[]');
+                        if (arrA.length !== arrB.length) return arrA.length - arrB.length;
+                        const sa = arrA.join(',');
+                        const sb = arrB.join(',');
+                        // numeric-aware locale compare (fallback to simple compare)
+                        return sa.localeCompare(sb, undefined, {numeric: true});
+                    } catch (e) {
+                        return 0;
+                    }
+                });
+
                 members.forEach(fr => {
                     createImageFromData(fr.treeInfo, fr.fileNameStem, fr.identifiedTrees, {
                         modelTag: fr.modelTag,

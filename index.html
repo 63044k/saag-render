@@ -104,9 +104,19 @@
         .tag-line {
             display: block; /* placed inside the paragraph as a separate line */
             margin: 0.15rem 0 0 0; /* small top gap only */
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             color: #0056b3;
             min-height: 1.2em; /* ensures an empty line when no tags */
+        }
+        .tag-badge {
+            display: inline-block;
+            padding: 0.08rem 0.18rem;
+            margin-right: 0.25rem;
+            background: rgba(0,86,179,0.08);
+            color: #0056b3;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.8rem;
         }
         .gallery-item {
             background-color: #fff;
@@ -114,6 +124,15 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.05);
             padding: .6rem;
             text-align: center;
+        }
+
+        /* Highlight the entire solution panel when hovered via a duplicate-set tag */
+        .gallery-item.highlighted-solution {
+            box-shadow: 0 6px 18px rgba(0,86,179,0.22);
+            border: 2px solid rgba(0,86,179,0.22);
+            background-color: salmon; /* salmon-pink highlight */
+            transform: translateY(-2px);
+            transition: all 120ms ease-in-out, background-color 120ms ease-in-out;
         }
         .gallery-item h3 {
             /* allow long file name stems to wrap across lines; make them small and italic */
@@ -174,6 +193,7 @@
                         Show filenames
                     </label>
                     <button id="download-all" disabled style="margin-top:0.5rem; padding:8px 14px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer;">Download All Images</button>
+                    <button id="dump-tags" title="Debug: dump registered duplicate tags to console" style="margin-top:0.5rem; padding:6px 10px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer;">Dump tags</button>
                 </div>
             </div>
         </header>

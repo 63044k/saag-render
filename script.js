@@ -1,6 +1,8 @@
 // Global person image - loaded once at startup
 let personImage = null;
 let personImageLoaded = false;
+// In-memory map from tag value -> Set of gallery-item elements (for fast highlight lookup)
+const tagToElements = new Map();
 
 // Load person image on page load
 window.addEventListener('DOMContentLoaded', function() {
@@ -225,6 +227,18 @@ window.addEventListener('DOMContentLoaded', function() {
         if (toggle) toggle.checked = false;
         document.body.classList.add('hide-filenames');
     }
+
+    // Debug: dump registered tags
+    const dumpBtn = document.getElementById('dump-tags');
+    if (dumpBtn) {
+        dumpBtn.addEventListener('click', () => {
+            console.log('[tag-map] dump start');
+            for (const [k, set] of tagToElements.entries()) {
+                console.log('  tag=', k, 'count=', set.size);
+            }
+            console.log('[tag-map] dump end');
+        });
+    }
 });
 
 function processFileResults(fileResults, gallery) {
@@ -340,7 +354,7 @@ function processFileResults(fileResults, gallery) {
         // create ORIGINAL from first member (displayed in originalBox)
         const first = group.members[0];
         const originalStem = deriveOriginalStem(first.fileNameStem) || first.fileNameStem;
-        createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash }, originalBox);
+    createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash, metaTag: group.tag }, originalBox);
 
         // For each model in this group, create a model-section container (row layout) and render that model's images inside a grid
         for (const [model, mm] of modelMap.entries()) {
@@ -406,7 +420,8 @@ function processFileResults(fileResults, gallery) {
                         hintMode: fr._hintMode,
                         normalizedKey: fr._normalizedKey,
                         timestamp: fr._timestamp,
-                        csvHash: group.csvHash
+                        csvHash: group.csvHash,
+                        metaTag: group.tag
                     }, hintGrid);
                 });
 
@@ -800,17 +815,129 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     title.style.margin = '0 0 1rem 0';
     title.style.fontSize = '1.1rem';
     title.textContent = fileNameStem;
-    // Tag line: show tags on their own line (or an empty placeholder line)
+    // Tag line: render each tag as its own badge so we can attach hover handlers
     const tagLine = document.createElement('span');
     tagLine.className = 'tag-line';
     if (tags && (tags.modelTag || tags.modelHintTag)) {
         const parts = [];
-        if (tags.modelTag) parts.push('[' + tags.modelTag + ']');
-        if (tags.modelHintTag) parts.push('[' + tags.modelHintTag + ']');
+        if (tags.modelTag) parts.push(tags.modelTag);
+        if (tags.modelHintTag) parts.push(tags.modelHintTag);
         // If any tag is a duplicate-set tag (starts with M. or MH.), prefix the line
         const isDuplicateTag = (t) => typeof t === 'string' && (t.startsWith('M.') || t.startsWith('MH.'));
         const shouldPrefix = isDuplicateTag(tags.modelTag) || isDuplicateTag(tags.modelHintTag);
-        tagLine.textContent = (shouldPrefix ? 'Duplicate sets: ' : '') + parts.join(' ');
+        if (shouldPrefix) {
+            const prefix = document.createElement('span');
+            prefix.textContent = 'Duplicate sets: ';
+            tagLine.appendChild(prefix);
+        }
+
+        // create badge spans for each tag
+        parts.forEach(t => {
+            const badge = document.createElement('span');
+            badge.className = 'tag-badge';
+            badge.textContent = `[${t}]`;
+            badge.dataset.tag = t;
+
+            // compute decorated subgroup-qualified tag keys for duplicate-sets
+            // Format for model-level duplicates: [meta.timestamp].[scenario.csvHash].[meta.tag].[llm.model].[M.A]
+            // Format for model+hint-level duplicates: [meta.timestamp].[scenario.csvHash].[meta.tag].[llm.model][scenario.hintMode].[MH.A]
+            let decoratedKey = null;
+            try {
+                const ts = (tags && tags.timestamp) ? String(tags.timestamp) : '';
+                const csv = (tags && tags.csvHash) ? String(tags.csvHash) : '';
+                const metaTag = (tags && tags.metaTag) ? String(tags.metaTag) : '';
+                const modelName = (tags && tags.model) ? String(tags.model) : '';
+                const hint = (tags && tags.hintMode) ? String(tags.hintMode) : '';
+
+                if (t && t.startsWith('M.')) {
+                    decoratedKey = `${ts}.${csv}.${metaTag}.${modelName}.${t}`;
+                } else if (t && t.startsWith('MH.')) {
+                    decoratedKey = `${ts}.${csv}.${metaTag}.${modelName}[${hint}].${t}`;
+                }
+            } catch (e) {
+                // ignore
+            }
+
+            // only attach hover handlers for duplicate-set tags (M. / MH.)
+            if (isDuplicateTag(t)) {
+                badge.style.cursor = 'pointer';
+                // make badge keyboard-focusable
+                badge.tabIndex = 0;
+
+                // if we have a decoratedKey, store it for the badge to use when matching
+                if (decoratedKey) badge.dataset.tagKey = decoratedKey;
+
+                const addHighlight = (badgeEl) => {
+                    const lookupKey = badgeEl.dataset.tagKey || badgeEl.dataset.tag;
+                    const keys = Array.from(tagToElements.keys());
+                    console.log('[highlight] trying to add for', lookupKey, 'registeredKeys=', keys);
+                    // try exact decorated key first
+                    let set = tagToElements.get(lookupKey);
+                    let matches = set ? Array.from(set) : [];
+                    // fallback: try raw tag label if no decorated matches
+                    if (matches.length === 0 && badgeEl.dataset.tag) {
+                        const raw = badgeEl.dataset.tag;
+                        set = tagToElements.get(raw);
+                        matches = set ? Array.from(set) : [];
+                    }
+                    console.log('[highlight] add', lookupKey, 'matches=', matches.length);
+                    if (matches.length > 0) {
+                        matches.forEach(el => el.classList.add('highlighted-solution'));
+                        return;
+                    }
+
+                    // Fallback: scan DOM and match datasets loosely (trimmed, case-insensitive)
+                    const fallback = [];
+                    document.querySelectorAll('.gallery-item').forEach(el => {
+                        const mt = (el.getAttribute('data-model-tag') || '').trim();
+                        const mht = (el.getAttribute('data-model-hint-tag') || '').trim();
+                        if (mt === lookupKey || mht === lookupKey || mt.toLowerCase() === lookupKey.toLowerCase() || mht.toLowerCase() === lookupKey.toLowerCase() || mt === badgeEl.dataset.tag || mht === badgeEl.dataset.tag) {
+                            fallback.push(el);
+                        }
+                    });
+                    console.log('[highlight] fallback matches=', fallback.length);
+                    fallback.forEach(el => el.classList.add('highlighted-solution'));
+                };
+
+                const removeHighlight = (badgeEl) => {
+                    const lookupKey = badgeEl.dataset.tagKey || badgeEl.dataset.tag;
+                    const keys = Array.from(tagToElements.keys());
+                    console.log('[highlight] trying to remove for', lookupKey, 'registeredKeys=', keys);
+                    let set = tagToElements.get(lookupKey);
+                    let matches = set ? Array.from(set) : [];
+                    if (matches.length === 0 && badgeEl.dataset.tag) {
+                        const raw = badgeEl.dataset.tag;
+                        set = tagToElements.get(raw);
+                        matches = set ? Array.from(set) : [];
+                    }
+                    console.log('[highlight] remove', lookupKey, 'matches=', matches.length);
+                    if (matches.length > 0) {
+                        matches.forEach(el => el.classList.remove('highlighted-solution'));
+                        return;
+                    }
+
+                    const fallback = [];
+                    document.querySelectorAll('.gallery-item').forEach(el => {
+                        const mt = (el.getAttribute('data-model-tag') || '').trim();
+                        const mht = (el.getAttribute('data-model-hint-tag') || '').trim();
+                        if (mt === lookupKey || mht === lookupKey || mt.toLowerCase() === lookupKey.toLowerCase() || mht.toLowerCase() === lookupKey.toLowerCase() || mt === badgeEl.dataset.tag || mht === badgeEl.dataset.tag) {
+                            fallback.push(el);
+                        }
+                    });
+                    console.log('[highlight] fallback remove matches=', fallback.length);
+                    fallback.forEach(el => el.classList.remove('highlighted-solution'));
+                };
+
+                console.log('[tag-badge] created', t, 'decoratedKey=', decoratedKey);
+                badge.addEventListener('mouseenter', (e) => addHighlight(e.currentTarget));
+                badge.addEventListener('mouseleave', (e) => removeHighlight(e.currentTarget));
+                badge.addEventListener('focus', (e) => addHighlight(e.currentTarget));
+                badge.addEventListener('blur', (e) => removeHighlight(e.currentTarget));
+            }
+
+            tagLine.appendChild(badge);
+            tagLine.appendChild(document.createTextNode(' '));
+        });
     } else {
         tagLine.textContent = '';
     }
@@ -882,6 +1009,66 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
         console.warn('Could not register generated image for bulk download', e);
     }
     
+    // set data attributes for quick DOM-lookups and register tags into tagToElements for fast highlighting
+    try {
+        if (tags && tags.modelTag) galleryItem.setAttribute('data-model-tag', String(tags.modelTag));
+        if (tags && tags.modelHintTag) galleryItem.setAttribute('data-model-hint-tag', String(tags.modelHintTag));
+
+        // helper: produce decorated subgroup-qualified key for a given duplicate tag
+        const makeDecoratedKey = (t) => {
+            if (!t) return null;
+            try {
+                const ts = (tags && tags.timestamp) ? String(tags.timestamp) : '';
+                const csv = (tags && tags.csvHash) ? String(tags.csvHash) : '';
+                const metaTag = (tags && tags.metaTag) ? String(tags.metaTag) : '';
+                const modelName = (tags && tags.model) ? String(tags.model) : '';
+                const hint = (tags && tags.hintMode) ? String(tags.hintMode) : '';
+
+                if (t.startsWith('M.')) {
+                    return `${ts}.${csv}.${metaTag}.${modelName}.${t}`;
+                }
+                if (t.startsWith('MH.')) {
+                    return `${ts}.${csv}.${metaTag}.${modelName}[${hint}].${t}`;
+                }
+                return null;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        // register element under each tag in the global tagToElements map; include decorated key when available
+        const registerTag = (t) => {
+            if (!t) return;
+            try {
+                // raw tag registration (backwards-compatible)
+                let set = tagToElements.get(t);
+                if (!set) {
+                    set = new Set();
+                    tagToElements.set(t, set);
+                }
+                set.add(galleryItem);
+
+                // decorated tag registration
+                const dk = makeDecoratedKey(t);
+                if (dk) {
+                    let dset = tagToElements.get(dk);
+                    if (!dset) {
+                        dset = new Set();
+                        tagToElements.set(dk, dset);
+                    }
+                    dset.add(galleryItem);
+                }
+            } catch (e) {
+                console.warn('Could not register tag in tagToElements', t, e);
+            }
+        };
+
+        if (tags && tags.modelTag) registerTag(tags.modelTag);
+        if (tags && tags.modelHintTag) registerTag(tags.modelHintTag);
+    } catch (e) {
+        console.warn('Error while setting data attributes / registering tags', e);
+    }
+
     // add the gallery item into the provided gallery container
     gallery.appendChild(galleryItem);
 }

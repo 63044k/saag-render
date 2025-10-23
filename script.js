@@ -78,6 +78,108 @@ function handleFileSelect(event) {
     }
 }
 
+// Download composites button handler (build zip with folders per scenario and per model)
+window.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('download-composites');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+        // find composite images
+        const composites = generatedImages.filter(g => g.modelTag && String(g.modelTag).toUpperCase() === 'COMPOSITE');
+        if (!composites.length) {
+            alert('No composite images found. Generate composites first.');
+            return;
+        }
+
+        // ensure JSZip
+        async function ensureJSZip() {
+            if (typeof JSZip !== 'undefined') return JSZip;
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js';
+                s.onload = () => {
+                    if (typeof JSZip !== 'undefined') resolve(JSZip);
+                    else reject(new Error('JSZip failed to initialize'));
+                };
+                s.onerror = () => reject(new Error('Failed to load JSZip'));
+                document.head.appendChild(s);
+            });
+        }
+
+        try {
+            await ensureJSZip();
+        } catch (e) {
+            alert('Could not load JSZip library.');
+            return;
+        }
+
+        const zip = new JSZip();
+
+    // Allow tilde (~) characters in model names (e.g. mistralai~mistral-7b-instruct-v0.3)
+    const sanitize = (s) => (s ? String(s).replace(/[^a-zA-Z0-9._\-\[\] ~]+/g, '_').replace(/\s+/g, '_') : '');
+
+        // Map scenarios encountered while adding composite images so we can add the ORIGINAL per-scenario
+        const scenarioMap = new Map();
+
+        composites.forEach(item => {
+            const ts = item.timestamp || '';
+            const csv = item.csvHash || '';
+            // Prefer explicit groupTag, but fall back to metaTag if groupTag is not present
+            const groupTag = item.groupTag || item.metaTag || '';
+            const scenarioFolder = `${sanitize(ts)}_[${sanitize(csv)}]_[${sanitize(groupTag)}]`;
+
+            // record scenario info for later original lookup
+            const scenarioKey = `${ts}||${csv}||${groupTag}`;
+            if (!scenarioMap.has(scenarioKey)) {
+                scenarioMap.set(scenarioKey, { ts, csv, groupTag, scenarioFolder });
+            }
+
+            const modelName = item.model || 'unknown_model';
+            const modelFolder = `[${sanitize(modelName)}]`;
+
+            const hint = item.hintMode || '';
+            const hintPart = hint ? `[${sanitize(hint)}]` : '[none]';
+
+            const filename = `${scenarioFolder}_[${sanitize(modelName)}]_${hintPart}_composite.png`;
+            const path = `${scenarioFolder}/${modelFolder}/${filename}`;
+            try {
+                const base64 = item.data.split(',')[1];
+                zip.file(path, base64, { base64: true });
+            } catch (e) {
+                console.warn('Skipping invalid composite image', item);
+            }
+        });
+
+        // For each scenario we added composites for, include the group's ORIGINAL image at the scenario root (if present)
+        for (const [, info] of scenarioMap.entries()) {
+            // Match originals by csvHash (tolerant) and prefer timestamp match when available
+            const originals = generatedImages.filter(g => g.modelTag === 'ORIGINAL' && (g.csvHash || '') === (info.csv || ''));
+            originals.forEach(orig => {
+                try {
+                    const base64 = orig.data.split(',')[1];
+                    const origName = `ORIGINAL_${sanitize(orig.csvHash || '')}_[${sanitize(orig.groupTag || orig.metaTag || '')}].png`;
+                    const origPath = `${info.scenarioFolder}/${origName}`;
+                    zip.file(origPath, base64, { base64: true });
+                } catch (e) {
+                    console.warn('Skipping invalid original image for scenario', orig);
+                }
+            });
+        }
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const ts = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        a.download = `${ts}_composites.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    });
+});
+
 // Global array to hold generated images for zipping
 const generatedImages = [];
 // Store last run fileResults for building metadata
@@ -294,7 +396,7 @@ function computeCompositeRemovals(members, threshold) {
 }
 
 // Create a composite gallery item and insert as the first card in the hintGrid
-function insertCompositeCard(hintGrid, treeData, members, groupMeta) {
+function insertCompositeCard(hintGrid, treeData, members, groupMeta, modelName, hintMode) {
     const settings = getCompositeSettings();
     if (!settings.enabled) return;
     const removals = computeCompositeRemovals(members, settings.threshold);
@@ -311,12 +413,14 @@ function insertCompositeCard(hintGrid, treeData, members, groupMeta) {
         modelTag: 'COMPOSITE',
         modelHintTag: null,
         sourceOriginal: null,
-        model: 'COMPOSITE',
-        hintMode: '',
+        // attribute composite images to the real model name so ZIP folders are correct
+        model: modelName || 'COMPOSITE',
+        hintMode: hintMode || '',
         normalizedKey: JSON.stringify(removedList),
         timestamp: groupMeta.timestamp || '',
         csvHash: groupMeta.csvHash || '',
-        metaTag: groupMeta.tag || ''
+        metaTag: groupMeta.tag || '',
+        groupTag: groupMeta.tag || ''
     };
 
     // Insert composite as the first child (so it appears at the start of the row)
@@ -504,7 +608,8 @@ function processFileResults(fileResults, gallery) {
                 // Insert composite card at the start of the hintGrid (uses the group's tree layout and member votes)
                 // Use the group's tree layout from the first member in the group
                 const groupTreeData = group.members && group.members[0] ? group.members[0].treeInfo : treeData;
-                insertCompositeCard(hintGrid, groupTreeData, members, { timestamp: group.ts, csvHash: group.csvHash, tag: group.tag });
+                // Pass the model name so the composite is attributed to the correct model folder
+                insertCompositeCard(hintGrid, groupTreeData, members, { timestamp: group.ts, csvHash: group.csvHash, tag: group.tag }, model, hintMode);
 
                 // Sort members by number of trees removed (least -> most), then by normalized id string as tiebreaker
                 members.sort((a, b) => {

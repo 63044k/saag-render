@@ -241,6 +241,96 @@ window.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Composite controls helpers
+function getCompositeSettings() {
+    try {
+        const enabled = !!document.getElementById('enable-composite')?.checked;
+        const raw = document.getElementById('composite-threshold')?.value;
+        const pct = raw ? Number(raw) : 50;
+        const thr = Math.max(0, Math.min(100, pct)) / 100.0;
+        return { enabled, threshold: thr };
+    } catch (e) {
+        return { enabled: true, threshold: 0.5 };
+    }
+}
+
+// Hook up threshold display update
+window.addEventListener('DOMContentLoaded', () => {
+    const slider = document.getElementById('composite-threshold');
+    const out = document.getElementById('composite-threshold-val');
+    if (slider && out) {
+        slider.addEventListener('input', () => { out.textContent = `${slider.value}%`; });
+        out.textContent = `${slider.value}%`;
+    }
+});
+
+// Given an array of members (fileResults) in a hint-section, compute a Set of treeIds to remove
+// when proportion of members voting for removal >= threshold
+function computeCompositeRemovals(members, threshold) {
+    // Build counts per treeId
+    const counts = new Map();
+    const total = members.length || 0;
+    members.forEach(fr => {
+        // Use the canonical normalizer used elsewhere to ensure consistent parsing/ordering
+        try {
+            const norm = normalizeIdentifiedTrees(fr.identifiedTrees || ''); // returns JSON string like '[1,2]'
+            if (!norm) return;
+            const ids = JSON.parse(norm);
+            ids.forEach(id => {
+                const n = counts.get(id) || 0;
+                counts.set(id, n + 1);
+            });
+        } catch (e) {
+            // ignore parse errors and treat as no ids
+        }
+    });
+
+    const removals = new Set();
+    if (total === 0) return removals;
+    for (const [id, cnt] of counts.entries()) {
+        if ((cnt / total) >= threshold) removals.add(id);
+    }
+    return removals;
+}
+
+// Create a composite gallery item and insert as the first card in the hintGrid
+function insertCompositeCard(hintGrid, treeData, members, groupMeta) {
+    const settings = getCompositeSettings();
+    if (!settings.enabled) return;
+    const removals = computeCompositeRemovals(members, settings.threshold);
+
+    // Build a pseudo-identifiedTrees string from removals
+    const removedList = Array.from(removals).sort((a,b)=>a-b);
+    const identifiedTrees = removedList.join(',');
+
+    // Use a filename stem indicating composite and threshold
+    const stem = `COMPOSITE_${Math.round(settings.threshold*100)}%`;
+
+    // tags: mark modelTag as COMPOSITE
+    const tags = {
+        modelTag: 'COMPOSITE',
+        modelHintTag: null,
+        sourceOriginal: null,
+        model: 'COMPOSITE',
+        hintMode: '',
+        normalizedKey: JSON.stringify(removedList),
+        timestamp: groupMeta.timestamp || '',
+        csvHash: groupMeta.csvHash || '',
+        metaTag: groupMeta.tag || ''
+    };
+
+    // Insert composite as the first child (so it appears at the start of the row)
+    // createImageFromData will append to the provided gallery container, so we create a temporary container
+    // and then move its produced node to the front of hintGrid.
+    const tempContainer = document.createElement('div');
+    createImageFromData(treeData, stem, identifiedTrees, tags, tempContainer);
+    console.log('[composite] created composite card', stem, 'removedCount=', removedList.length, 'threshold=', Math.round(getCompositeSettings().threshold*100)+'%');
+    // move any created gallery-items into the hintGrid at the front
+    while (tempContainer.firstChild) {
+        hintGrid.insertBefore(tempContainer.firstChild, hintGrid.firstChild);
+    }
+}
+
 function processFileResults(fileResults, gallery) {
     // Group files by park signature + meta.tag + meta.timestamp
     lastFileResults = fileResults;
@@ -410,6 +500,11 @@ function processFileResults(fileResults, gallery) {
                 const hintGrid = document.createElement('div');
                 hintGrid.className = 'group-grid';
                 hintSection.appendChild(hintGrid);
+
+                // Insert composite card at the start of the hintGrid (uses the group's tree layout and member votes)
+                // Use the group's tree layout from the first member in the group
+                const groupTreeData = group.members && group.members[0] ? group.members[0].treeInfo : treeData;
+                insertCompositeCard(hintGrid, groupTreeData, members, { timestamp: group.ts, csvHash: group.csvHash, tag: group.tag });
 
                 // Sort members by number of trees removed (least -> most), then by normalized id string as tiebreaker
                 members.sort((a, b) => {

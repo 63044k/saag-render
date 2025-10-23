@@ -191,7 +191,16 @@
                         <input type="checkbox" id="toggle-filenames" />
                         Show filenames
                     </label>
-                    <button id="download-all" disabled style="margin-top:0.5rem; padding:8px 14px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer;">Download All Images</button>
+                    <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.95rem; color:#333;">
+                        <input type="checkbox" id="enable-composite" checked />
+                        Show composite
+                    </label>
+                    <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.95rem; color:#333;">
+                        <span style="font-size:0.85rem; color:#666;">Composite threshold</span>
+                        <input id="composite-threshold" type="range" min="0" max="100" step="5" value="50" />
+                        <span id="composite-threshold-val" style="width:2.5rem; text-align:right; font-size:0.9rem; color:#333;">50%</span>
+                    </label>
+                    <button id="download-all" disabled style="margin-top:0.5rem; padding:8px 14px; background:#17a2b8; color:#fff; border:none; border-radius:4px; cursor:pointer;">Download Solution Images</button>
                     <button id="dump-tags" title="Debug: dump registered duplicate tags to console" style="margin-top:0.5rem; padding:6px 10px; background:#6c757d; color:#fff; border:none; border-radius:4px; cursor:pointer;">Dump tags</button>
                 </div>
             </div>

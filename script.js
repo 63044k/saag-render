@@ -140,34 +140,78 @@ window.addEventListener('DOMContentLoaded', () => {
         // Map scenarios encountered while adding composite images so we can add the ORIGINAL per-scenario
         const scenarioMap = new Map();
 
+        // Group composites by scenarioKey -> model -> hintMode -> array(items)
+        const grouped = new Map();
+
         composites.forEach(item => {
             const ts = item.timestamp || '';
             const csv = item.csvHash || '';
-            // Prefer explicit groupTag, but fall back to metaTag if groupTag is not present
             const groupTag = item.groupTag || item.metaTag || '';
-            const scenarioFolder = `${sanitize(ts)}_[${sanitize(csv)}]_[${sanitize(groupTag)}]`;
+            const scenarioKey = `${ts}||${csv}||${groupTag}`;
 
             // record scenario info for later original lookup
-            const scenarioKey = `${ts}||${csv}||${groupTag}`;
+            const scenarioFolder = `${sanitize(ts)}_[${sanitize(csv)}]_[${sanitize(groupTag)}]`;
             if (!scenarioMap.has(scenarioKey)) {
                 scenarioMap.set(scenarioKey, { ts, csv, groupTag, scenarioFolder });
             }
 
             const modelName = item.model || 'unknown_model';
-            const modelFolder = `[${sanitize(modelName)}]`;
+            const modelKey = modelName;
+            const hint = (item.hintMode || 'none');
 
-            const hint = item.hintMode || '';
-            const hintPart = hint ? `[${sanitize(hint)}]` : '[none]';
-
-            const filename = `${scenarioFolder}_[${sanitize(modelName)}]_${hintPart}_composite.png`;
-            const path = `${scenarioFolder}/${modelFolder}/${filename}`;
-            try {
-                const base64 = item.data.split(',')[1];
-                zip.file(path, base64, { base64: true });
-            } catch (e) {
-                console.warn('Skipping invalid composite image', item);
-            }
+            if (!grouped.has(scenarioKey)) grouped.set(scenarioKey, new Map());
+            const modelMap = grouped.get(scenarioKey);
+            if (!modelMap.has(modelKey)) modelMap.set(modelKey, new Map());
+            const hintMap = modelMap.get(modelKey);
+            if (!hintMap.has(hint)) hintMap.set(hint, []);
+            hintMap.get(hint).push(item);
         });
+
+        // For each scenario and model, create pairwise subfolders A-B and include both composite images
+        for (const [scenarioKey, modelMap] of grouped.entries()) {
+            const scenarioInfo = scenarioMap.get(scenarioKey) || { scenarioFolder: '' };
+            const scenarioFolder = scenarioInfo.scenarioFolder || '';
+
+            for (const [modelName, hintMap] of modelMap.entries()) {
+                const modelFolder = `[${sanitize(modelName)}]`;
+
+                // list of hint modes present
+                const hintModes = Array.from(hintMap.keys()).map(h => h || 'none');
+                // sort alphabetically to produce canonical pair names
+                hintModes.sort((a,b) => String(a).localeCompare(String(b), undefined, {sensitivity: 'base'}));
+
+                // generate unordered pairs
+                for (let i = 0; i < hintModes.length; i++) {
+                    for (let j = i + 1; j < hintModes.length; j++) {
+                        const a = hintModes[i];
+                        const b = hintModes[j];
+                        const pairFolder = `${sanitize(a)}-${sanitize(b)}`;
+
+                        // include all composites for hint a and hint b inside the pair folder
+                        const itemsA = hintMap.get(a) || [];
+                        const itemsB = hintMap.get(b) || [];
+
+                        const addItems = (arr, hintLabel) => {
+                            arr.forEach((item, idx) => {
+                                try {
+                                    const base64 = item.data.split(',')[1];
+                                    // create filename preserving hint label for clarity
+                                    const hintPart = hintLabel ? `[${sanitize(hintLabel)}]` : '[none]';
+                                    const filename = `${scenarioFolder}_[${sanitize(modelName)}]_${hintPart}_composite.png`;
+                                    const path = `${scenarioFolder}/${modelFolder}/${pairFolder}/${filename}`;
+                                    zip.file(path, base64, { base64: true });
+                                } catch (e) {
+                                    console.warn('Skipping invalid composite image in pair', item);
+                                }
+                            });
+                        };
+
+                        addItems(itemsA, a);
+                        addItems(itemsB, b);
+                    }
+                }
+            }
+        }
 
         // For each scenario we added composites for, include the group's ORIGINAL image at the scenario root (if present)
         for (const [, info] of scenarioMap.entries()) {

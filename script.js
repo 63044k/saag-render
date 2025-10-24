@@ -214,13 +214,15 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         // For each scenario we added composites for, include the group's ORIGINAL image at the scenario root (if present)
+        // Use the exact filename stored in generatedImages (so we preserve the filename shown in the gallery h3)
         for (const [, info] of scenarioMap.entries()) {
             // Match originals by csvHash (tolerant) and prefer timestamp match when available
             const originals = generatedImages.filter(g => g.modelTag === 'ORIGINAL' && (g.csvHash || '') === (info.csv || ''));
             originals.forEach(orig => {
                 try {
                     const base64 = orig.data.split(',')[1];
-                    const origName = `ORIGINAL_${sanitize(orig.csvHash || '')}_[${sanitize(orig.groupTag || orig.metaTag || '')}].png`;
+                    // Prefer using the already-generated filename recorded in generatedImages so we don't reconstruct it incorrectly
+                    const origName = orig.filename || `ORIGINAL_${sanitize(orig.csvHash || '')}_[UNSPECIFIED].png`;
                     const origPath = `${info.scenarioFolder}/${origName}`;
                     zip.file(origPath, base64, { base64: true });
                 } catch (e) {

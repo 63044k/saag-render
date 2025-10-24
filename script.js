@@ -201,11 +201,25 @@ window.addEventListener('DOMContentLoaded', () => {
                     for (let j = i + 1; j < hintModes.length; j++) {
                         const a = hintModes[i];
                         const b = hintModes[j];
-                        const pairFolder = `${sanitize(a)}-vs-${sanitize(b)}`;
-
                         // include all composites for hint a and hint b inside the pair folder
                         const itemsA = hintMap.get(a) || [];
                         const itemsB = hintMap.get(b) || [];
+
+                        // detect whether the two hint-mode composite sets have identical normalizedKey sets
+                        // (folder is marked duplicate only when ALL keys match)
+                        const keysA = new Set((itemsA || []).map(it => String(it.normalizedKey || '')));
+                        const keysB = new Set((itemsB || []).map(it => String(it.normalizedKey || '')));
+
+                        // helper: check set equality (order-independent)
+                        const setsEqual = (s1, s2) => {
+                            if (s1.size !== s2.size) return false;
+                            for (const v of s1) if (!s2.has(v)) return false;
+                            return true;
+                        };
+
+                        const bothEqual = setsEqual(keysA, keysB);
+                        const dupSuffix = bothEqual ? '_DUPLICATE' : '';
+                        const pairFolder = `${sanitize(a)}-vs-${sanitize(b)}${dupSuffix}`;
 
                         const addItems = (arr, hintLabel) => {
                             arr.forEach((item, idx) => {

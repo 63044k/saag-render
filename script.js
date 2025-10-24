@@ -135,7 +135,8 @@ window.addEventListener('DOMContentLoaded', () => {
         const zip = new JSZip();
 
     // Allow tilde (~) characters in model names (e.g. mistralai~mistral-7b-instruct-v0.3)
-    const sanitize = (s) => (s ? String(s).replace(/[^a-zA-Z0-9._\-\[\] ~]+/g, '_').replace(/\s+/g, '_') : '');
+    // Allow commas in hintMode names (don't replace ',' with underscore) so pair-folder names keep commas intact
+    const sanitize = (s) => (s ? String(s).replace(/[^a-zA-Z0-9._\-\[\], ~]+/g, '_').replace(/\s+/g, '_') : '');
 
         // Map scenarios encountered while adding composite images so we can add the ORIGINAL per-scenario
         const scenarioMap = new Map();
@@ -185,7 +186,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     for (let j = i + 1; j < hintModes.length; j++) {
                         const a = hintModes[i];
                         const b = hintModes[j];
-                        const pairFolder = `${sanitize(a)}-${sanitize(b)}`;
+                        const pairFolder = `${sanitize(a)}-vs-${sanitize(b)}`;
 
                         // include all composites for hint a and hint b inside the pair folder
                         const itemsA = hintMap.get(a) || [];

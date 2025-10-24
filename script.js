@@ -1069,18 +1069,29 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     const meterInPixels = 1 * scale;
     const darkBandColor = '#888888';
     const lightBandColor = '#AAAAAA';
-    
+
+    // Use integer pixel math for band positions/sizes to avoid sub-pixel gaps that
+    // appear as dividing lines at smaller canvas sizes. Compute rounded border width.
+    const intBorderPx = Math.max(1, Math.round(border * scale));
+
+    // Draw bands by rounding cumulative positions so each pixel column/row is filled
+    // and there are no 1px gaps due to fractional widths.
     for (let i = 0; i < totalDim.width; i++) {
-        // Use Math.floor(i / 2) to create 2-meter bands
         const color = (Math.floor(i / 2) % 2 === 0) ? darkBandColor : lightBandColor;
         ctx.fillStyle = color;
-        const currentPos = i * meterInPixels;
 
-        // Top, Bottom, Left, Right bands
-        ctx.fillRect(currentPos, 0, meterInPixels, border_px);
-        ctx.fillRect(currentPos, canvas.height - border_px, meterInPixels, border_px);
-        ctx.fillRect(0, currentPos, border_px, meterInPixels);
-        ctx.fillRect(canvas.width - border_px, currentPos, border_px, meterInPixels);
+        const start = Math.round(i * meterInPixels);
+        const end = Math.round((i + 1) * meterInPixels);
+        const w = end - start;
+        if (w <= 0) continue;
+
+        // Top and bottom bands
+        ctx.fillRect(start, 0, w, intBorderPx);
+        ctx.fillRect(start, canvas.height - intBorderPx, w, intBorderPx);
+
+        // Left and right bands (use same computed segment length)
+        ctx.fillRect(0, start, intBorderPx, w);
+        ctx.fillRect(canvas.width - intBorderPx, start, intBorderPx, w);
     }
 
     // Draw labels every 2 meters along the bottom
@@ -1097,8 +1108,8 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
             continue; // Skip labels between 10-20m and 20-30m
         }
 
-        // Bottom labels only
-        ctx.fillText(label, pos_on_axis, canvas.height - (border_px / 2));
+        // Bottom labels only (use half of integer border for vertical placement)
+        ctx.fillText(label, pos_on_axis, canvas.height - (intBorderPx / 2));
     }
 
     // Draw person for scale if image loaded

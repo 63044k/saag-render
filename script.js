@@ -22,33 +22,45 @@ window.addEventListener('DOMContentLoaded', function() {
 document.getElementById('file-input').addEventListener('change', handleFileSelect);
 
 function handleFileSelect(event) {
-    const files = event.target.files;
+    const files = event.target.files || [];
     const gallery = document.getElementById('image-gallery');
     gallery.innerHTML = ''; // Clear previous images
 
     const fileResults = []; // Store file processing results
 
-    // First pass: collect all file data
+    // Only consider files that end with .json (case-insensitive)
+    const fileArray = Array.from(files);
+    const jsonFiles = fileArray.filter(f => typeof f.name === 'string' && f.name.toLowerCase().endsWith('.json'));
+
+    if (jsonFiles.length === 0) {
+        alert('No JSON files selected. Please select one or more .json files.');
+        return;
+    }
+
+    // First pass: collect all file data (count only JSON files)
     let filesProcessed = 0;
-    const totalFiles = files.length;
+    const totalFiles = jsonFiles.length;
 
-    for (const file of files) {
-        if (!file.name.endsWith('.json')) {
-            console.warn(`Skipping non-JSON file: ${file.name}`);
-            continue;
-        }
-
+    for (const file of jsonFiles) {
         const reader = new FileReader();
-        
+
         reader.onload = function(e) {
             try {
                 const fileContent = e.target.result;
                 const data = JSON.parse(fileContent);
-                
-                const treeInfo = JSON.parse(data.scenario.trees);
-                const fileNameStem = file.name.replace(/\.json$/, '');
+
+                // scenario.trees may already be an object or a JSON string; handle both
+                let treeInfo = null;
+                try {
+                    treeInfo = typeof data.scenario?.trees === 'string' ? JSON.parse(data.scenario.trees) : data.scenario?.trees;
+                } catch (inner) {
+                    // fallback to the raw value if parsing fails
+                    treeInfo = data.scenario?.trees;
+                }
+
+                const fileNameStem = file.name.replace(/\.json$/i, '');
                 const identifiedTrees = data.result?.identifiedTrees || '';
-                
+
                 // extract timestamp if present under data.meta.timestamp
                 const timestamp = data.meta && data.meta.timestamp ? String(data.meta.timestamp) : null;
 
@@ -63,13 +75,21 @@ function handleFileSelect(event) {
 
             } catch (error) {
                 console.error(`Error processing file ${file.name}:`, error);
+                // Notify but continue processing remaining JSON files
                 alert(`Could not process ${file.name}. Is it a valid JSON file?`);
             }
 
             filesProcessed++;
             if (filesProcessed === totalFiles) {
-                // All files processed — always proceed to grouping/rendering.
-                // Any differences simply form separate groups (no aborts).
+                // All JSON files processed — proceed to grouping/rendering.
+                processFileResults(fileResults, gallery);
+            }
+        };
+
+        reader.onerror = function(e) {
+            console.error(`Failed to read file ${file.name}`, e);
+            filesProcessed++;
+            if (filesProcessed === totalFiles) {
                 processFileResults(fileResults, gallery);
             }
         };

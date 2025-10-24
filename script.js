@@ -1084,7 +1084,7 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
     }
 
     // Draw labels every 2 meters along the bottom
-    ctx.font = `${Math.round(scale * 0.75)}px sans-serif`;
+    ctx.font = `${Math.round(scale * 1.05)}px sans-serif`;
     ctx.fillStyle = 'white';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

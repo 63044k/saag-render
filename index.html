@@ -200,6 +200,12 @@
                         <input type="checkbox" id="enable-composite" checked />
                         Show composite
                     </label>
+                    <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.95rem; color:#333;">
+                        <span style="font-size:0.85rem; color:#666;">Image size</span>
+                        <input id="image-size" type="range" min="100" max="2000" step="10" value="400" />
+                        <input id="image-size-val" type="number" min="100" max="2000" value="400" style="width:80px;" />
+                        <span id="current-image-size" style="font-size:0.85rem; color:#666;">(current: --px)</span>
+                    </label>
                     <button id="download-composites" style="margin-top:0.5rem; padding:8px 14px; background:#ffc107; color:#111; border:none; border-radius:4px; cursor:pointer;">Download Composite Images</button>
                     <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.95rem; color:#333;">
                         <span style="font-size:0.85rem; color:#666;">Composite threshold</span>

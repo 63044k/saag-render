@@ -1,6 +1,8 @@
 // Global person image - loaded once at startup
 let personImage = null;
 let personImageLoaded = false;
+// Image size (px) used for generated canvases. Default 400, range 100-2000.
+let imageSize = 400;
 // In-memory map from tag value -> Set of gallery-item elements (for fast highlight lookup)
 const tagToElements = new Map();
 
@@ -17,6 +19,19 @@ window.addEventListener('DOMContentLoaded', function() {
         personImageLoaded = true; // Still set to true so we don't wait forever
     };
     img.src = './images/person_AdobeStock_1239257467.png';
+});
+
+// Initialize image size from localStorage if present
+window.addEventListener('DOMContentLoaded', () => {
+    try {
+        const saved = localStorage.getItem('imageSize');
+        const n = saved ? Number(saved) : null;
+        if (n && !isNaN(n)) {
+            imageSize = Math.max(100, Math.min(2000, n));
+        }
+    } catch (e) {
+        // ignore
+    }
 });
 
 document.getElementById('file-input').addEventListener('change', handleFileSelect);
@@ -431,6 +446,43 @@ window.addEventListener('DOMContentLoaded', () => {
         slider.addEventListener('input', () => { out.textContent = `${slider.value}%`; });
         out.textContent = `${slider.value}%`;
     }
+});
+
+// Wire up image size controls (range + number input)
+window.addEventListener('DOMContentLoaded', () => {
+    const slider = document.getElementById('image-size');
+    const num = document.getElementById('image-size-val');
+    const display = document.getElementById('current-image-size');
+
+    const setDisplay = (v) => {
+        if (display) display.textContent = `(current: ${v}px)`;
+    };
+
+    if (slider) {
+        slider.value = String(imageSize);
+        slider.addEventListener('input', () => {
+            const v = Math.max(100, Math.min(2000, Number(slider.value)));
+            imageSize = v;
+            try { localStorage.setItem('imageSize', String(v)); } catch (e) {}
+            if (num) num.value = String(v);
+            setDisplay(v);
+        });
+    }
+    if (num) {
+        num.value = String(imageSize);
+        num.addEventListener('change', () => {
+            let v = Number(num.value);
+            if (isNaN(v)) v = 400;
+            v = Math.max(100, Math.min(2000, v));
+            imageSize = v;
+            try { localStorage.setItem('imageSize', String(v)); } catch (e) {}
+            if (slider) slider.value = String(v);
+            setDisplay(v);
+        });
+    }
+
+    // initial display
+    setDisplay(imageSize);
 });
 
 // Given an array of members (fileResults) in a hint-section, compute a Set of treeIds to remove
@@ -990,8 +1042,9 @@ function createImageFromData(treeData, fileNameStem, identifiedTrees, tags = {},
     const remainingTrees = treeData.trees.filter(tree => !treesToRemove.has(tree.treeId));
 
     const canvas = document.createElement('canvas');
-    canvas.width = 1360;
-    canvas.height = 1360;
+    // Use configurable imageSize (px)
+    canvas.width = imageSize;
+    canvas.height = imageSize;
     const ctx = canvas.getContext('2d');
     const scale = canvas.width / totalDim.width;
     const border_px = border * scale;

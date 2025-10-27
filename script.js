@@ -3,6 +3,16 @@ let personImage = null;
 let personImageLoaded = false;
 // Image size (px) used for generated canvases. Default 400, range 100-2000.
 let imageSize = 400;
+// Helper: HTML-escape a string for safe insertion into generated HTML index
+function escapeHtml(s) {
+    if (s === null || typeof s === 'undefined') return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 // In-memory map from tag value -> Set of gallery-item elements (for fast highlight lookup)
 const tagToElements = new Map();
 
@@ -338,6 +348,38 @@ window.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
+            // Build an HTML index that shows each image with its UI name and scenario.csv (csvHash)
+            try {
+                const htmlParts = [];
+                htmlParts.push('<!doctype html>');
+                htmlParts.push('<html><head><meta charset="utf-8"><title>Original Images</title>');
+                htmlParts.push('<style>body{font-family:system-ui,Segoe UI,Arial;margin:20px;} .card{display:inline-block;margin:10px;border:1px solid #ddd;padding:8px;border-radius:6px;width:260px;vertical-align:top;} .card img{max-width:100%;height:auto;display:block;} .meta{font-size:0.85rem;color:#333;margin-top:6px;}</style>');
+                htmlParts.push('</head><body>');
+                htmlParts.push('<h1>Original Images</h1>');
+
+                originals.forEach(item => {
+                    try {
+                        const titleEl = item.querySelector('h3');
+                        const imgEl = item.querySelector('img');
+                        const name = titleEl ? titleEl.textContent.trim() : 'ORIGINAL';
+                        const csv = item.getAttribute('data-scenario-csv') || item.getAttribute('data-csv-hash') || '';
+                        const displayFilename = `${name}.png`;
+                        htmlParts.push(`<div class="card">`);
+                        htmlParts.push(`<img src="${displayFilename}" alt="${escapeHtml(name)}"/>`);
+                        htmlParts.push(`<div class="meta"><strong>Name:</strong> ${escapeHtml(name)}<br/><strong>CSV:</strong> ${escapeHtml(csv)}</div>`);
+                        htmlParts.push(`</div>`);
+                    } catch (e) {
+                        // ignore individual failures
+                    }
+                });
+
+                htmlParts.push('</body></html>');
+                const html = htmlParts.join('\n');
+                zip.file('index.html', html);
+            } catch (e) {
+                console.warn('Could not build HTML index for originals', e);
+            }
+
             const blob = await zip.generateAsync({ type: 'blob' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -658,9 +700,10 @@ function processFileResults(fileResults, gallery) {
         const sig = getParkSignature(fr.treeInfo);
         const tag = fr.rawData && fr.rawData.meta && fr.rawData.meta.tag ? String(fr.rawData.meta.tag) : '';
         const ts = fr._timestamp || '';
-        const csvHash = fr.rawData && fr.rawData.scenario && fr.rawData.scenario.csvHash ? String(fr.rawData.scenario.csvHash) : '';
-        const gkey = `${sig}||${tag}||${ts}`;
-        if (!groups.has(gkey)) groups.set(gkey, { sig, tag, ts, csvHash, members: [] });
+    const csvHash = fr.rawData && fr.rawData.scenario && fr.rawData.scenario.csvHash ? String(fr.rawData.scenario.csvHash) : '';
+    const csvContent = fr.rawData && fr.rawData.scenario && fr.rawData.scenario.csv ? String(fr.rawData.scenario.csv) : '';
+    const gkey = `${sig}||${tag}||${ts}`;
+    if (!groups.has(gkey)) groups.set(gkey, { sig, tag, ts, csvHash, csv: csvContent, members: [] });
         groups.get(gkey).members.push(fr);
     });
 
@@ -759,7 +802,7 @@ function processFileResults(fileResults, gallery) {
         // create ORIGINAL from first member (displayed in originalBox)
         const first = group.members[0];
         const originalStem = deriveOriginalStem(first.fileNameStem) || first.fileNameStem;
-    createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash, metaTag: group.tag }, originalBox);
+    createImageFromData(first.treeInfo, originalStem, '', { modelTag: 'ORIGINAL', sourceOriginal: first.originalFile, model: first._model, hintMode: first._hintMode, normalizedKey: first._normalizedKey, timestamp: first._timestamp, csvHash: group.csvHash, csv: group.csv, metaTag: group.tag }, originalBox);
 
         // For each model in this group, create a model-section container (row layout) and render that model's images inside a grid
         for (const [model, mm] of modelMap.entries()) {
@@ -820,7 +863,7 @@ function processFileResults(fileResults, gallery) {
                 // Use the group's tree layout from the first member in the group
                 const groupTreeData = group.members && group.members[0] ? group.members[0].treeInfo : treeData;
                 // Pass the model name so the composite is attributed to the correct model folder
-                insertCompositeCard(hintGrid, groupTreeData, members, { timestamp: group.ts, csvHash: group.csvHash, tag: group.tag }, model, hintMode);
+                insertCompositeCard(hintGrid, groupTreeData, members, { timestamp: group.ts, csvHash: group.csvHash, csv: group.csv, tag: group.tag }, model, hintMode);
 
                 // Sort members by number of trees removed (least -> most), then by normalized id string as tiebreaker
                 members.sort((a, b) => {
@@ -849,6 +892,7 @@ function processFileResults(fileResults, gallery) {
                         normalizedKey: fr._normalizedKey,
                         timestamp: fr._timestamp,
                         csvHash: group.csvHash,
+                        csv: group.csv,
                         metaTag: group.tag
                     }, hintGrid);
                 });
@@ -872,6 +916,17 @@ function processFileResults(fileResults, gallery) {
             members: group.members.map(m => ({ file: m.originalFile, tags: [m.modelTag, m.modelHintTag].filter(Boolean) }))
         });
     });
+
+    // Helper for HTML escaping
+    function escapeHtml(s) {
+        if (!s) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 }
 
 // Validate that all uploaded files share the same meta.timestamp value.
@@ -1443,6 +1498,16 @@ function drawCompleteImage(ctx, canvas, parkDim, border, border_px, scale, total
             modelHintTag: tags && tags.modelHintTag ? tags.modelHintTag : null,
             groupTag: tags && tags.groupTag ? tags.groupTag : null
         });
+        // expose generated filename and csvHash on the gallery item for downstream consumers
+        try {
+            galleryItem.setAttribute('data-generated-filename', `${downloadStem}.png`);
+            const csvHashValue = tags && tags.csvHash ? String(tags.csvHash) : (treeData && treeData.csvHash ? String(treeData.csvHash) : '');
+            const csvContentValue = tags && tags.csv ? String(tags.csv) : (treeData && treeData.csv ? String(treeData.csv) : '');
+            if (csvHashValue) galleryItem.setAttribute('data-csv-hash', csvHashValue);
+            if (csvContentValue) galleryItem.setAttribute('data-scenario-csv', csvContentValue);
+        } catch (e) {
+            // ignore
+        }
         const btn = document.getElementById('download-all');
         if (btn) btn.disabled = false;
     } catch (e) {

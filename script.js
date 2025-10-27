@@ -191,6 +191,23 @@ window.addEventListener('DOMContentLoaded', () => {
             for (const [modelName, hintMap] of modelMap.entries()) {
                 const modelFolder = `[${sanitize(modelName)}]`;
 
+                // Add composite images directly under the model folder as well
+                // (so model folder contains the images that also appear inside pairwise subfolders)
+                for (const [hintMode, items] of hintMap.entries()) {
+                    const hintLabel = hintMode || 'none';
+                    const hintPart = hintLabel ? `[${sanitize(hintLabel)}]` : '[none]';
+                    for (const item of (items || [])) {
+                        try {
+                            const base64 = item.data.split(',')[1];
+                            const filename = `${scenarioFolder}_[${sanitize(modelName)}]_${hintPart}_composite.png`;
+                            const path = `${scenarioFolder}/${modelFolder}/${filename}`;
+                            zip.file(path, base64, { base64: true });
+                        } catch (e) {
+                            console.warn('Skipping invalid composite image for model root', item);
+                        }
+                    }
+                }
+
                 // list of hint modes present
                 const hintModes = Array.from(hintMap.keys()).map(h => h || 'none');
                 // sort alphabetically to produce canonical pair names

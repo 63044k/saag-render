@@ -291,6 +291,67 @@ window.addEventListener('DOMContentLoaded', () => {
         a.remove();
         URL.revokeObjectURL(url);
     });
+
+    // New: Download ORIGINAL images only (use filenames as shown in UI)
+    const origBtn = document.getElementById('download-originals');
+    if (origBtn) {
+        origBtn.addEventListener('click', async () => {
+            // collect ORIGINAL gallery items
+            const originals = Array.from(document.querySelectorAll('.gallery-item[data-model-tag="ORIGINAL"]'));
+            if (!originals.length) {
+                alert('No ORIGINAL images found. Generate images first.');
+                return;
+            }
+
+            // ensure JSZip
+            async function ensureJSZipLocal() {
+                if (typeof JSZip !== 'undefined') return JSZip;
+                return new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js';
+                    s.onload = () => {
+                        if (typeof JSZip !== 'undefined') resolve(JSZip);
+                        else reject(new Error('JSZip failed to initialize'));
+                    };
+                    s.onerror = () => reject(new Error('Failed to load JSZip'));
+                    document.head.appendChild(s);
+                });
+            }
+
+            try { await ensureJSZipLocal(); } catch (e) { alert('Could not load JSZip library.'); return; }
+
+            const zip = new JSZip();
+            // Add files using the H3 text as the filename (preserves UI name)
+            originals.forEach(item => {
+                try {
+                    const img = item.querySelector('img');
+                    const titleEl = item.querySelector('h3');
+                    const name = titleEl ? titleEl.textContent.trim() : null;
+                    if (!img || !img.src) return;
+                    const dataUrl = img.src;
+                    if (!dataUrl.startsWith('data:image')) return;
+                    const base64 = dataUrl.split(',')[1];
+                    const filename = `${name || 'ORIGINAL'}.png`;
+                    zip.file(filename, base64, { base64: true });
+                } catch (e) {
+                    console.warn('Skipping original image', e);
+                }
+            });
+
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const d = new Date();
+            const pad2 = (n) => String(n).padStart(2, '0');
+            const ts2 = `${d.getFullYear()}${pad2(d.getMonth()+1)}${pad2(d.getDate())}-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
+            a.download = `${ts2}_originals.zip`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        });
+    }
 });
 
 // Global array to hold generated images for zipping

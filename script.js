@@ -108,6 +108,13 @@ function handleFileSelect(event) {
             if (filesProcessed === totalFiles) {
                 // All JSON files processed — proceed to grouping/rendering.
                 processFileResults(fileResults, gallery);
+                // Clear file input so selecting the same files again will fire a change event
+                try {
+                    const inp = document.getElementById('file-input');
+                    if (inp) inp.value = '';
+                } catch (e) {
+                    // ignore
+                }
             }
         };
 
@@ -116,6 +123,13 @@ function handleFileSelect(event) {
             filesProcessed++;
             if (filesProcessed === totalFiles) {
                 processFileResults(fileResults, gallery);
+                // Clear file input so selecting the same files again will fire a change event
+                try {
+                    const inp = document.getElementById('file-input');
+                    if (inp) inp.value = '';
+                } catch (e) {
+                    // ignore
+                }
             }
         };
 

@@ -274,23 +274,41 @@ window.addEventListener('DOMContentLoaded', () => {
                             console.warn('Could not create pair identifier file for', pairFolder, e);
                         }
 
-                        const addItems = (arr, hintLabel) => {
-                            arr.forEach((item, idx) => {
+                        // Combine items from both hint modes and randomize order. Then write them
+                        // into the pair folder with alternating prefixes 1_ and 2_. If there are
+                        // more than two images, prefixes will alternate (1_,2_,1_,2_,...). This
+                        // preserves randomness while ensuring one image is labeled 1_ and the
+                        // other 2_ when exactly two are present.
+                        try {
+                            const combined = [];
+                            (itemsA || []).forEach(it => combined.push({ it, hintLabel: a }));
+                            (itemsB || []).forEach(it => combined.push({ it, hintLabel: b }));
+
+                            // Fisher-Yates shuffle
+                            for (let k = combined.length - 1; k > 0; k--) {
+                                const j = Math.floor(Math.random() * (k + 1));
+                                const tmp = combined[k];
+                                combined[k] = combined[j];
+                                combined[j] = tmp;
+                            }
+
+                            combined.forEach((entry, idx) => {
                                 try {
+                                    const item = entry.it;
+                                    const hintLabel = entry.hintLabel;
                                     const base64 = item.data.split(',')[1];
-                                    // create filename preserving hint label for clarity
                                     const hintPart = hintLabel ? `[${sanitize(hintLabel)}]` : '[none]';
-                                    const filename = `${scenarioFolder}_[${sanitize(modelName)}]_${hintPart}_composite.png`;
+                                    const prefix = (idx % 2 === 0) ? '1_' : '2_';
+                                    const filename = `${prefix}${scenarioFolder}_[${sanitize(modelName)}]_${hintPart}_composite.png`;
                                     const path = `${scenarioFolder}/${modelFolder}/${pairFolder}/${filename}`;
                                     zip.file(path, base64, { base64: true });
                                 } catch (e) {
-                                    console.warn('Skipping invalid composite image in pair', item);
+                                    console.warn('Skipping invalid composite image in pair', entry);
                                 }
                             });
-                        };
-
-                        addItems(itemsA, a);
-                        addItems(itemsB, b);
+                        } catch (e) {
+                            console.warn('Error while shuffling/adding pair images', e);
+                        }
                     }
                 }
             }

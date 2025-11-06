@@ -207,6 +207,9 @@ window.addEventListener('DOMContentLoaded', () => {
             hintMap.get(hint).push(item);
         });
 
+        // Prepare CSV rows collector for pair randomization
+        const pairRows = [];
+
         // For each scenario and model, create pairwise subfolders A-B and include both composite images
         for (const [scenarioKey, modelMap] of grouped.entries()) {
             const scenarioInfo = scenarioMap.get(scenarioKey) || { scenarioFolder: '' };
@@ -262,12 +265,10 @@ window.addEventListener('DOMContentLoaded', () => {
                         const dupSuffix = bothEqual ? '_DUPLICATE' : '';
                         const pairFolder = `${sanitize(a)}-vs-${sanitize(b)}${dupSuffix}`;
 
-                        // Create an empty identifier file inside the pair folder named with the
-                        // scenario identifier, model and the pair label (no extension). Example:
-                        // 20251105-122151_[21504af3dd2d]_[fin]_[gpt-4.1-nano]_[clusters,densities-vs-none]
+                        // Identifier for this pair (used both as empty file name and CSV id)
+                        const idIdentifier = `${scenarioFolder}_[${sanitize(modelName)}]_[${pairFolder}]`;
                         try {
-                            const idFileName = `${scenarioFolder}_[${sanitize(modelName)}]_[${pairFolder}]`;
-                            const idPath = `${scenarioFolder}/${modelFolder}/${pairFolder}/${idFileName}`;
+                            const idPath = `${scenarioFolder}/${modelFolder}/${pairFolder}/${idIdentifier}`;
                             // add an empty file (zero bytes)
                             zip.file(idPath, '');
                         } catch (e) {
@@ -292,6 +293,29 @@ window.addEventListener('DOMContentLoaded', () => {
                                 combined[j] = tmp;
                             }
 
+                            // Determine first two selected images (after shuffle) for CSV
+                            const firstEntry = combined.length > 0 ? combined[0] : null;
+                            const secondEntry = combined.length > 1 ? combined[1] : null;
+
+                            // Helper to build filenames consistently (without prefix and with prefix)
+                            const buildFilenames = (entry, idx) => {
+                                if (!entry) return { noPref: '', withPref: '' };
+                                const hintLabel = entry.hintLabel;
+                                const hintPart = hintLabel ? `[${sanitize(hintLabel)}]` : '[none]';
+                                const baseName = `${scenarioFolder}_[${sanitize(modelName)}]_${hintPart}_composite.png`;
+                                const prefix = (idx % 2 === 0) ? '1_' : '2_';
+                                return { noPref: baseName, withPref: `${prefix}${baseName}` };
+                            };
+
+                            // Build CSV row values for this pair using first/second entries
+                            try {
+                                const f = buildFilenames(firstEntry, 0);
+                                const s = buildFilenames(secondEntry, 1);
+                                pairRows.push({ id: idIdentifier, first_no_prefix: f.noPref, second_no_prefix: s.noPref, first_with_prefix: f.withPref, second_with_prefix: s.withPref });
+                            } catch (e) {
+                                console.warn('Could not record pair row for', idIdentifier, e);
+                            }
+
                             combined.forEach((entry, idx) => {
                                 try {
                                     const item = entry.it;
@@ -299,7 +323,8 @@ window.addEventListener('DOMContentLoaded', () => {
                                     const base64 = item.data.split(',')[1];
                                     const hintPart = hintLabel ? `[${sanitize(hintLabel)}]` : '[none]';
                                     const prefix = (idx % 2 === 0) ? '1_' : '2_';
-                                    const filename = `${prefix}${scenarioFolder}_[${sanitize(modelName)}]_${hintPart}_composite.png`;
+                                    const baseName = `${scenarioFolder}_[${sanitize(modelName)}]_${hintPart}_composite.png`;
+                                    const filename = `${prefix}${baseName}`;
                                     const path = `${scenarioFolder}/${modelFolder}/${pairFolder}/${filename}`;
                                     zip.file(path, base64, { base64: true });
                                 } catch (e) {
@@ -330,6 +355,55 @@ window.addEventListener('DOMContentLoaded', () => {
                     console.warn('Skipping invalid original image for scenario', orig);
                 }
             });
+        }
+
+        // Write CSV manifest of pair randomization into ZIP root
+        try {
+            const csvEscape = (v) => {
+                if (v === null || typeof v === 'undefined') return '""';
+                const s = String(v);
+                return '"' + s.replace(/"/g, '""') + '"';
+            };
+
+            const header = ['id','first_no_prefix','second_no_prefix','first_with_prefix','second_with_prefix'];
+            const lines = [header.join(',')];
+            pairRows.forEach(r => {
+                lines.push([
+                    csvEscape(r.id),
+                    csvEscape(r.first_no_prefix),
+                    csvEscape(r.second_no_prefix),
+                    csvEscape(r.first_with_prefix),
+                    csvEscape(r.second_with_prefix)
+                ].join(','));
+            });
+            const csvContent = lines.join('\n');
+            zip.file('pair_randomization.csv', csvContent);
+        } catch (e) {
+            console.warn('Could not write pair_randomization.csv', e);
+        }
+
+        // Also write a YAML manifest for easier human reading
+        try {
+            const yamlEscape = (v) => {
+                if (v === null || typeof v === 'undefined') return '""';
+                // Use JSON.stringify to produce a properly escaped, double-quoted YAML scalar
+                return JSON.stringify(String(v));
+            };
+
+            const yamlLines = [];
+            yamlLines.push('pairs:');
+            pairRows.forEach(r => {
+                yamlLines.push('  - id: ' + yamlEscape(r.id));
+                yamlLines.push('    first_no_prefix: ' + yamlEscape(r.first_no_prefix));
+                yamlLines.push('    second_no_prefix: ' + yamlEscape(r.second_no_prefix));
+                yamlLines.push('    first_with_prefix: ' + yamlEscape(r.first_with_prefix));
+                yamlLines.push('    second_with_prefix: ' + yamlEscape(r.second_with_prefix));
+            });
+
+            const yamlContent = yamlLines.join('\n');
+            zip.file('pair_randomization.yaml', yamlContent);
+        } catch (e) {
+            console.warn('Could not write pair_randomization.yaml', e);
         }
 
         const blob = await zip.generateAsync({ type: 'blob' });

@@ -262,6 +262,18 @@ window.addEventListener('DOMContentLoaded', () => {
                         const dupSuffix = bothEqual ? '_DUPLICATE' : '';
                         const pairFolder = `${sanitize(a)}-vs-${sanitize(b)}${dupSuffix}`;
 
+                        // Create an empty identifier file inside the pair folder named with the
+                        // scenario identifier, model and the pair label (no extension). Example:
+                        // 20251105-122151_[21504af3dd2d]_[fin]_[gpt-4.1-nano]_[clusters,densities-vs-none]
+                        try {
+                            const idFileName = `${scenarioFolder}_[${sanitize(modelName)}]_[${pairFolder}]`;
+                            const idPath = `${scenarioFolder}/${modelFolder}/${pairFolder}/${idFileName}`;
+                            // add an empty file (zero bytes)
+                            zip.file(idPath, '');
+                        } catch (e) {
+                            console.warn('Could not create pair identifier file for', pairFolder, e);
+                        }
+
                         const addItems = (arr, hintLabel) => {
                             arr.forEach((item, idx) => {
                                 try {

@@ -268,9 +268,10 @@ window.addEventListener('DOMContentLoaded', () => {
                         // Identifier for this pair (used both as empty file name and CSV id)
                         const idIdentifier = `${scenarioFolder}_[${sanitize(modelName)}]_[${pairFolder}]`;
                         try {
-                            const idPath = `${scenarioFolder}/${modelFolder}/${pairFolder}/${idIdentifier}`;
-                            // add an empty file (zero bytes)
-                            zip.file(idPath, '');
+                            // Name the identifier file with a .id extension and write the id text
+                            // into the file (some systems have trouble with zero-byte files).
+                            const idPath = `${scenarioFolder}/${modelFolder}/${pairFolder}/${idIdentifier}.id`;
+                            zip.file(idPath, idIdentifier + '\n');
                         } catch (e) {
                             console.warn('Could not create pair identifier file for', pairFolder, e);
                         }
@@ -311,7 +312,7 @@ window.addEventListener('DOMContentLoaded', () => {
                             try {
                                 const f = buildFilenames(firstEntry, 0);
                                 const s = buildFilenames(secondEntry, 1);
-                                pairRows.push({ id: idIdentifier, first_no_prefix: f.noPref, second_no_prefix: s.noPref, first_with_prefix: f.withPref, second_with_prefix: s.withPref });
+                                pairRows.push({ id: idIdentifier + '.id', first_no_prefix: f.noPref, second_no_prefix: s.noPref, first_with_prefix: f.withPref, second_with_prefix: s.withPref });
                             } catch (e) {
                                 console.warn('Could not record pair row for', idIdentifier, e);
                             }
